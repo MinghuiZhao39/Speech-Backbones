@@ -26,15 +26,15 @@ def convert_pad_shape(pad_shape):
 def generate_path(duration, mask):
     device = duration.device
 
-    b, t_x, t_y = mask.shape
-    cum_duration = torch.cumsum(duration, 1)
-    path = torch.zeros(b, t_x, t_y, dtype=mask.dtype).to(device=device)
+    b, t_x, t_y = mask.shape #(1, 55, 200)
+    cum_duration = torch.cumsum(duration, 1) # 
+    path = torch.zeros(b, t_x, t_y, dtype=mask.dtype).to(device=device) #(1, 55)
 
-    cum_duration_flat = cum_duration.view(b * t_x)
-    path = sequence_mask(cum_duration_flat, t_y).to(mask.dtype)
-    path = path.view(b, t_x, t_y)
+    cum_duration_flat = cum_duration.view(b * t_x) #(55)
+    path = sequence_mask(cum_duration_flat, t_y).to(mask.dtype) #(55, 200)
+    path = path.view(b, t_x, t_y) #(1, 55, 200)
     path = path - torch.nn.functional.pad(path, convert_pad_shape([[0, 0], 
-                                          [1, 0], [0, 0]]))[:, :-1]
+                                          [1, 0], [0, 0]]))[:, :-1] #difference with its offset by 1
     path = path * mask
     return path
 

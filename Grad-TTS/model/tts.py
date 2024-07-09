@@ -75,25 +75,25 @@ class GradTTS(BaseModule):
         mu_x, logw, x_mask = self.encoder(x, x_lengths, spk)
 
         w = torch.exp(logw) * x_mask
-        w_ceil = torch.ceil(w) * length_scale
+        w_ceil = torch.ceil(w) * length_scale #(1, 1, 55)
         y_lengths = torch.clamp_min(torch.sum(w_ceil, [1, 2]), 1).long()
         y_max_length = int(y_lengths.max())
-        y_max_length_ = fix_len_compatibility(y_max_length)
+        y_max_length_ = fix_len_compatibility(y_max_length) # so that y_max_length is multiple of (4?)
 
         # Using obtained durations `w` construct alignment map `attn`
-        y_mask = sequence_mask(y_lengths, y_max_length_).unsqueeze(1).to(x_mask.dtype)
-        attn_mask = x_mask.unsqueeze(-1) * y_mask.unsqueeze(2)
-        attn = generate_path(w_ceil.squeeze(1), attn_mask.squeeze(1)).unsqueeze(1)
+        y_mask = sequence_mask(y_lengths, y_max_length_).unsqueeze(1).to(x_mask.dtype) #(1, 1, 200)
+        attn_mask = x_mask.unsqueeze(-1) * y_mask.unsqueeze(2) #(1, 1, 55, 1) * (1, 1, 1, 200) = (1, 1, 55, 200)
+        attn = generate_path(w_ceil.squeeze(1), attn_mask.squeeze(1)).unsqueeze(1) # (1, 1, 55, 200)
 
         # Align encoded text and get mu_y
-        mu_y = torch.matmul(attn.squeeze(1).transpose(1, 2), mu_x.transpose(1, 2))
-        mu_y = mu_y.transpose(1, 2)
-        encoder_outputs = mu_y[:, :, :y_max_length]
+        mu_y = torch.matmul(attn.squeeze(1).transpose(1, 2), mu_x.transpose(1, 2)) #(1, 200, 55) (1, 55, 80) align \tilde{\mu} to \mu 
+        mu_y = mu_y.transpose(1, 2) #(1, 80, 200)
+        encoder_outputs = mu_y[:, :, :y_max_length] #(1, 80, 197)
 
         # Sample latent representation from terminal distribution N(mu_y, I)
         z = mu_y + torch.randn_like(mu_y, device=mu_y.device) / temperature
         # Generate sample by performing reverse dynamics
-        decoder_outputs = self.decoder(z, y_mask, mu_y, n_timesteps, stoc, spk)
+        decoder_outputs = self.decoder(z, y_mask, mu_y, n_timesteps, stoc, spk) #(1, 80, 200)
         decoder_outputs = decoder_outputs[:, :, :y_max_length]
 
         return encoder_outputs, decoder_outputs, attn[:, :, :y_max_length]

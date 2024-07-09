@@ -89,7 +89,7 @@ class DurationPredictor(BaseModule):
         x = torch.relu(x)
         x = self.norm_2(x)
         x = self.drop(x)
-        x = self.proj(x * x_mask)
+        x = self.proj(x * x_mask) #(1, 1, 55)
         return x * x_mask
 
 
@@ -265,7 +265,7 @@ class Encoder(BaseModule):
             self.norm_layers_2.append(LayerNorm(hidden_channels))
 
     def forward(self, x, x_mask):
-        attn_mask = x_mask.unsqueeze(2) * x_mask.unsqueeze(-1)
+        attn_mask = x_mask.unsqueeze(2) * x_mask.unsqueeze(-1) # (1, 1, 1, 55) * (1, 1, 55, 1) = (1, 1, 55, 55)
         for i in range(self.n_layers):
             x = x * x_mask
             y = self.attn_layers[i](x, x, attn_mask)
@@ -297,6 +297,7 @@ class TextEncoder(BaseModule):
         self.n_spks = n_spks
 
         self.emb = torch.nn.Embedding(n_vocab, n_channels)
+        # why this initialisation trick?
         torch.nn.init.normal_(self.emb.weight, 0.0, n_channels**-0.5)
 
         self.prenet = ConvReluNorm(n_channels, n_channels, n_channels, 
@@ -305,22 +306,22 @@ class TextEncoder(BaseModule):
         self.encoder = Encoder(n_channels + (spk_emb_dim if n_spks > 1 else 0), filter_channels, n_heads, n_layers, 
                                kernel_size, p_dropout, window_size=window_size)
 
-        self.proj_m = torch.nn.Conv1d(n_channels + (spk_emb_dim if n_spks > 1 else 0), n_feats, 1)
+        self.proj_m = torch.nn.Conv1d(n_channels + (spk_emb_dim if n_spks > 1 else 0), n_feats, 1) # linear layer
         self.proj_w = DurationPredictor(n_channels + (spk_emb_dim if n_spks > 1 else 0), filter_channels_dp, 
                                         kernel_size, p_dropout)
 
     def forward(self, x, x_lengths, spk=None):
-        x = self.emb(x) * math.sqrt(self.n_channels)
-        x = torch.transpose(x, 1, -1)
-        x_mask = torch.unsqueeze(sequence_mask(x_lengths, x.size(2)), 1).to(x.dtype)
+        x = self.emb(x) * math.sqrt(self.n_channels) #(1, 55, 192)
+        x = torch.transpose(x, 1, -1) #(1, 192, 55)
+        x_mask = torch.unsqueeze(sequence_mask(x_lengths, x.size(2)), 1).to(x.dtype) #(1, 1, 55)
 
-        x = self.prenet(x, x_mask)
+        x = self.prenet(x, x_mask) #(1, 192, 55)
         if self.n_spks > 1:
             x = torch.cat([x, spk.unsqueeze(-1).repeat(1, 1, x.shape[-1])], dim=1)
-        x = self.encoder(x, x_mask)
-        mu = self.proj_m(x) * x_mask
+        x = self.encoder(x, x_mask) #(1, 192, 55)
+        mu = self.proj_m(x) * x_mask #(1, 80, 55)
 
         x_dp = torch.detach(x)
-        logw = self.proj_w(x_dp, x_mask)
+        logw = self.proj_w(x_dp, x_mask) # (1, 1, 55)
 
         return mu, logw, x_mask
