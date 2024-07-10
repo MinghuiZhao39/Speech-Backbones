@@ -29,7 +29,7 @@ f_max = 8000
 # encoder parameters
 n_enc_channels = 192
 filter_channels = 768
-filter_channels_dp = 256
+filter_channels_dp = 256 # duration predictor
 n_enc_layers = 6
 enc_kernel = 3
 enc_dropout = 0.1
