@@ -82,7 +82,7 @@ class TextMelBatchCollate(object):
         y_max_length = max([item['y'].shape[-1] for item in batch])
         y_max_length = fix_len_compatibility(y_max_length)
         x_max_length = max([item['x'].shape[-1] for item in batch])
-        n_feats = batch[0]['y'].shape[-2]
+        n_feats = batch[0]['y'].shape[-2] #80
 
         y = torch.zeros((B, n_feats, y_max_length), dtype=torch.float32)
         x = torch.zeros((B, x_max_length), dtype=torch.long)
