@@ -124,18 +124,18 @@ class GradTTS(BaseModule):
         y_max_length = y.shape[-1]
 
         y_mask = sequence_mask(y_lengths, y_max_length).unsqueeze(1).to(x_mask)
-        attn_mask = x_mask.unsqueeze(-1) * y_mask.unsqueeze(2)
+        attn_mask = x_mask.unsqueeze(-1) * y_mask.unsqueeze(2) #(16, 1, 265, 1) * (16, 1, 1, 812) = (16, 1, 265, 812) 
 
         # Use MAS to find most likely alignment `attn` between text and mel-spectrogram
         with torch.no_grad(): 
             const = -0.5 * math.log(2 * math.pi) * self.n_feats
             factor = -0.5 * torch.ones(mu_x.shape, dtype=mu_x.dtype, device=mu_x.device)
-            y_square = torch.matmul(factor.transpose(1, 2), y ** 2)
+            y_square = torch.matmul(factor.transpose(1, 2), y ** 2) #(16, 265, 812)
             y_mu_double = torch.matmul(2.0 * (factor * mu_x).transpose(1, 2), y)
             mu_square = torch.sum(factor * (mu_x ** 2), 1).unsqueeze(-1)
             log_prior = y_square - y_mu_double + mu_square + const
 
-            attn = monotonic_align.maximum_path(log_prior, attn_mask.squeeze(1))
+            attn = monotonic_align.maximum_path(log_prior, attn_mask.squeeze(1)) #(16, 265, 812)
             attn = attn.detach()
 
         # Compute loss between predicted log-scaled durations and those obtained from MAS
@@ -151,9 +151,10 @@ class GradTTS(BaseModule):
                 for start, end in offset_ranges
             ]).to(y_lengths)
             
-            attn_cut = torch.zeros(attn.shape[0], attn.shape[1], out_size, dtype=attn.dtype, device=attn.device)
-            y_cut = torch.zeros(y.shape[0], self.n_feats, out_size, dtype=y.dtype, device=y.device)
+            attn_cut = torch.zeros(attn.shape[0], attn.shape[1], out_size, dtype=attn.dtype, device=attn.device) #(16, 265, 172)
+            y_cut = torch.zeros(y.shape[0], self.n_feats, out_size, dtype=y.dtype, device=y.device) #(16, 80, 172)
             y_cut_lengths = []
+            # y: (16, 80, 812) out_offset: (16)
             for i, (y_, out_offset_) in enumerate(zip(y, out_offset)):
                 y_cut_length = out_size + (y_lengths[i] - out_size).clamp(None, 0)
                 y_cut_lengths.append(y_cut_length)
@@ -168,8 +169,8 @@ class GradTTS(BaseModule):
             y_mask = y_cut_mask
 
         # Align encoded text with mel-spectrogram and get mu_y segment
-        mu_y = torch.matmul(attn.squeeze(1).transpose(1, 2), mu_x.transpose(1, 2))
-        mu_y = mu_y.transpose(1, 2)
+        mu_y = torch.matmul(attn.squeeze(1).transpose(1, 2), mu_x.transpose(1, 2)) # (16, 172, 265), (16, 265, 80) = (16, 172, 80)
+        mu_y = mu_y.transpose(1, 2) #(16, 80, 172)
 
         # Compute loss of score-based decoder
         diff_loss, xt = self.decoder.compute_loss(y, y_mask, mu_y, spk)

@@ -56,7 +56,11 @@ def mel_spectrogram(y, n_fft, num_mels, sampling_rate, hop_size, win_size, fmin,
 
     global mel_basis, hann_window
     if fmax not in mel_basis:
+<<<<<<< HEAD
         mel = librosa_mel_fn(sr=sampling_rate, n_fft=n_fft, n_mels=num_mels, fmin=fmin,fmax =fmax)
+=======
+        mel = librosa_mel_fn(sr=sampling_rate, n_fft=n_fft, n_mels=num_mels, fmin=fmin, fmax=fmax)
+>>>>>>> 63bf4083f8533d312096680f35e8fe06731335d2
         mel_basis[str(fmax)+'_'+str(y.device)] = torch.from_numpy(mel).float().to(y.device)
         hann_window[str(y.device)] = torch.hann_window(win_size).to(y.device)
 
@@ -65,7 +69,11 @@ def mel_spectrogram(y, n_fft, num_mels, sampling_rate, hop_size, win_size, fmin,
 
     spec = torch.stft(y, n_fft, hop_length=hop_size, win_length=win_size, window=hann_window[str(y.device)],
                       center=center, pad_mode='reflect', normalized=False, onesided=True, return_complex=True)
+<<<<<<< HEAD
 
+=======
+    
+>>>>>>> 63bf4083f8533d312096680f35e8fe06731335d2
     spec = torch.view_as_real(spec)
     spec = torch.sqrt(spec.pow(2).sum(-1)+(1e-9))
 

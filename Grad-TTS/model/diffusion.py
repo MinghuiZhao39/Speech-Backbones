@@ -179,11 +179,11 @@ class GradLogPEstimator2d(BaseModule):
         t = self.mlp(t)
 
         if self.n_spks < 2:
-            x = torch.stack([mu, x], 1)
+            x = torch.stack([mu, x], 1) #(16, 80, 172) (16, 80, 172) = (16, 2, 80, 172)
         else:
             s = s.unsqueeze(-1).repeat(1, 1, x.shape[-1])
             x = torch.stack([mu, x, s], 1)
-        mask = mask.unsqueeze(1)
+        mask = mask.unsqueeze(1) #(16, 1, 1, 172)
 
         hiddens = []
         masks = [mask]
@@ -210,7 +210,7 @@ class GradLogPEstimator2d(BaseModule):
             x = attn(x)
             x = upsample(x * mask_up)
 
-        x = self.final_block(x, mask)
+        x = self.final_block(x, mask) #(16, 1, 80, 172)
         output = self.final_conv(x * mask)
 
         return (output * mask).squeeze(1)
@@ -242,7 +242,7 @@ class Diffusion(BaseModule):
                                              pe_scale=pe_scale)
 
     def forward_diffusion(self, x0, mask, mu, t):
-        time = t.unsqueeze(-1).unsqueeze(-1)
+        time = t.unsqueeze(-1).unsqueeze(-1) #(16, 1, 1)
         cum_noise = get_noise(time, self.beta_min, self.beta_max, cumulative=True)
         mean = x0*torch.exp(-0.5*cum_noise) + mu*(1.0 - torch.exp(-0.5*cum_noise))
         variance = 1.0 - torch.exp(-cum_noise)

@@ -313,7 +313,7 @@ class TextEncoder(BaseModule):
     def forward(self, x, x_lengths, spk=None):
         x = self.emb(x) * math.sqrt(self.n_channels) #(1, 55, 192)
         x = torch.transpose(x, 1, -1) #(1, 192, 55)
-        x_mask = torch.unsqueeze(sequence_mask(x_lengths, x.size(2)), 1).to(x.dtype) #(1, 1, 55)
+        x_mask = torch.unsqueeze(sequence_mask(x_lengths, x.size(2)), 1).to(x.dtype) #(1, 1, 55) (16, 1, 265)
 
         x = self.prenet(x, x_mask) #(1, 192, 55)
         if self.n_spks > 1:
