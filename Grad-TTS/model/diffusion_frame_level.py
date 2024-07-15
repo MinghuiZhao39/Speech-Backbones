@@ -72,6 +72,7 @@ class ResnetBlock(BaseModule):
             self.res_conv = torch.nn.Identity()
 
     def forward(self, x, mask, time_emb):
+        # time_emb (1, 1, 1, 64)
         h = self.block1(x, mask)
         h += self.mlp(time_emb).unsqueeze(-1).unsqueeze(-1)
         h = self.block2(h, mask)
@@ -256,23 +257,20 @@ class FrameLevelDiffusion(BaseModule):
         # mask (1, 1, 200) z (1, 80, 200) mu (1, 80, 200)
         h = 1.0 / n_timesteps
         xt = z * mask
-        mu_ = mu[:, :, 1:]
-        xt_ = xt[:, :, :-1]
         generated_frames = torch.zeros_like(mu)
-        current_frame = xt[:, :, 0]
+        t = torch.tensor([1.0 - (i + 0.5) * h for i in range(n_timesteps)])
+        time = t.unsqueeze(-1).unsqueeze(-1)
+        noise_t = get_noise(time, self.beta_min, self.beta_max, cumulative=False)
+        noise_estimate = torch.zeros(n_timesteps, mu.shape[1], mu.shape[2])
+        for i in range(n_timesteps):
+            noise_estimate[i:i+1, :, :] = self.estimator(xt, mask, mu, t[i:i+1], spk)
+        
         for frame_num in range(mu.shape[-1]):
+            current_frame = xt[:, :, frame_num]
             for i in range(n_timesteps):
-                t = (1.0 - (i + 0.5)*h) * torch.ones(z.shape[0], dtype=z.dtype, 
-                                                     device=z.device) #t = 0.95|0.85...|0.05
-                time = t.unsqueeze(-1).unsqueeze(-1)
-                noise_t = get_noise(time, self.beta_min, self.beta_max, 
-                                    cumulative=False)
-                #dxt = 0.5 * (mu_ - xt_ - self.estimator(xt, mask, mu, t, spk)[:, :, 1:])
-                if torch.isnan(current_frame):
-                    print(frame_num, i)
-                dxt = 0.5 * (mu[:, :, frame_num] - current_frame) 
-                dxt = dxt * noise_t * h
-                current_mask = mask[:, :, frame_num]
+                dxt = 0.5 * (mu[:, :, frame_num] - current_frame - noise_estimate[i:i+1, :, frame_num])
+                dxt = dxt * noise_t[i:i+1] * h
+                current_mask = mask[:, :, frame_num:frame_num+1]
                 current_frame = (current_frame - dxt) * current_mask # (1, 80, 200) * (1, 1, 200)
             generated_frames[:, :, frame_num] = current_frame
         return generated_frames
