@@ -252,25 +252,17 @@ class Diffusion(BaseModule):
         return xt * mask, z * mask 
 
     @torch.no_grad()
-    def reverse_diffusion(self, z, mask, mu, n_timesteps, stoc=False, spk=None): # mu (1, 80, 200)
+    def reverse_diffusion(self, z, mask, mu, n_timesteps, stoc=False, spk=None):
         h = 1.0 / n_timesteps
         xt = z * mask
         for i in range(n_timesteps):
             t = (1.0 - (i + 0.5)*h) * torch.ones(z.shape[0], dtype=z.dtype, 
-                                                 device=z.device)
+                                                 device=z.device) #t = 0.95|0.85...|0.05
             time = t.unsqueeze(-1).unsqueeze(-1)
             noise_t = get_noise(time, self.beta_min, self.beta_max, 
                                 cumulative=False)
-            if stoc:  # adds stochastic term
-                dxt_det = 0.5 * (mu - xt) - self.estimator(xt, mask, mu, t, spk)
-                dxt_det = dxt_det * noise_t * h
-                dxt_stoc = torch.randn(z.shape, dtype=z.dtype, device=z.device,
-                                       requires_grad=False)
-                dxt_stoc = dxt_stoc * torch.sqrt(noise_t * h)
-                dxt = dxt_det + dxt_stoc
-            else:
-                dxt = 0.5 * (mu - xt - self.estimator(xt, mask, mu, t, spk))
-                dxt = dxt * noise_t * h
+            dxt = 0.5 * (mu - xt - self.estimator(xt, mask, mu, t, spk))
+            dxt = dxt * noise_t * h
             xt = (xt - dxt) * mask
         return xt
 
@@ -280,8 +272,8 @@ class Diffusion(BaseModule):
 
     def loss_t(self, x0, mask, mu, t, spk=None):
         xt, z  = self.forward_diffusion(x0, mask, mu, t) #(16, 80, 172)
-        time = t.unsqueeze(-1).unsqueeze(-1)
-        cum_noise = get_noise(time, self.beta_min, self.beta_max, cumulative=True) #the same as noise calculated in xt
+        time = t.unsqueeze(-1).unsqueeze(-1) # (16, 1, 1)
+        cum_noise = get_noise(time, self.beta_min, self.beta_max, cumulative=True) #the same as noise calculated in xt (16, 1, 1)
         noise_estimation = self.estimator(xt, mask, mu, t, spk) #(16, 80, 172)
         noise_estimation *= torch.sqrt(1.0 - torch.exp(-cum_noise)) # \sqrt(lambda)s_\theta
         loss = torch.sum((noise_estimation + z)**2) / (torch.sum(mask)*self.n_feats)
