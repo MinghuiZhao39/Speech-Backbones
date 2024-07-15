@@ -7,7 +7,7 @@ def sequence_mask(length, max_length=None):
     if max_length is None:
         max_length = length.max()
     x = torch.arange(int(max_length), dtype=length.dtype, device=length.device)
-    return x.unsqueeze(0) < length.unsqueeze(1)
+    return x.unsqueeze(0) < length.unsqueeze(1) #(1, 55) (1, 1)
 
 
 def fix_len_compatibility(length, num_downsamplings_in_unet=2):
@@ -27,7 +27,7 @@ def generate_path(duration, mask):
     device = duration.device
 
     b, t_x, t_y = mask.shape #(1, 55, 200)
-    cum_duration = torch.cumsum(duration, 1) # 
+    cum_duration = torch.cumsum(duration, 1) #cummulative duration 
     path = torch.zeros(b, t_x, t_y, dtype=mask.dtype).to(device=device) #(1, 55)
 
     cum_duration_flat = cum_duration.view(b * t_x) #(55)

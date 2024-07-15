@@ -224,11 +224,11 @@ def get_noise(t, beta_init, beta_term, cumulative=False):
     return noise
 
 
-class Diffusion(BaseModule):
+class FrameLevelDiffusion(BaseModule):
     def __init__(self, n_feats, dim,
                  n_spks=1, spk_emb_dim=64,
                  beta_min=0.05, beta_max=20, pe_scale=1000):
-        super(Diffusion, self).__init__()
+        super(FrameLevelDiffusion, self).__init__()
         self.n_feats = n_feats
         self.dim = dim
         self.n_spks = n_spks
@@ -252,19 +252,30 @@ class Diffusion(BaseModule):
         return xt * mask, z * mask 
 
     @torch.no_grad()
-    def reverse_diffusion(self, z, mask, mu, n_timesteps, stoc=False, spk=None):
+    def reverse_diffusion(self, z, mask, mu, n_timesteps, stoc=False, spk=None): 
+        # mask (1, 1, 200) z (1, 80, 200) mu (1, 80, 200)
         h = 1.0 / n_timesteps
         xt = z * mask
-        for i in range(n_timesteps):
-            t = (1.0 - (i + 0.5)*h) * torch.ones(z.shape[0], dtype=z.dtype, 
-                                                 device=z.device) #t = 0.95|0.85...|0.05
-            time = t.unsqueeze(-1).unsqueeze(-1)
-            noise_t = get_noise(time, self.beta_min, self.beta_max, 
-                                cumulative=False)
-            dxt = 0.5 * (mu - xt - self.estimator(xt, mask, mu, t, spk))
-            dxt = dxt * noise_t * h
-            xt = (xt - dxt) * mask
-        return xt
+        mu_ = mu[:, :, 1:]
+        xt_ = xt[:, :, :-1]
+        generated_frames = torch.zeros_like(mu)
+        current_frame = xt[:, :, 0]
+        for frame_num in range(mu.shape[-1]):
+            for i in range(n_timesteps):
+                t = (1.0 - (i + 0.5)*h) * torch.ones(z.shape[0], dtype=z.dtype, 
+                                                     device=z.device) #t = 0.95|0.85...|0.05
+                time = t.unsqueeze(-1).unsqueeze(-1)
+                noise_t = get_noise(time, self.beta_min, self.beta_max, 
+                                    cumulative=False)
+                #dxt = 0.5 * (mu_ - xt_ - self.estimator(xt, mask, mu, t, spk)[:, :, 1:])
+                if torch.isnan(current_frame):
+                    print(frame_num, i)
+                dxt = 0.5 * (mu[:, :, frame_num] - current_frame) 
+                dxt = dxt * noise_t * h
+                current_mask = mask[:, :, frame_num]
+                current_frame = (current_frame - dxt) * current_mask # (1, 80, 200) * (1, 1, 200)
+            generated_frames[:, :, frame_num] = current_frame
+        return generated_frames
 
     @torch.no_grad()
     def forward(self, z, mask, mu, n_timesteps, stoc=False, spk=None):

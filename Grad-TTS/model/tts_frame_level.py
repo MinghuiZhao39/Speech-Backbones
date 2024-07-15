@@ -14,15 +14,15 @@ import torch
 from model import monotonic_align
 from model.base import BaseModule
 from model.text_encoder import TextEncoder
-from model.diffusion import Diffusion
+from model.diffusion_frame_level import FrameLevelDiffusion
 from model.utils import sequence_mask, generate_path, duration_loss, fix_len_compatibility
 
 
-class GradTTS(BaseModule):
+class FrameLevelGradTTS(BaseModule):
     def __init__(self, n_vocab, n_spks, spk_emb_dim, n_enc_channels, filter_channels, filter_channels_dp, 
                  n_heads, n_enc_layers, enc_kernel, enc_dropout, window_size, 
                  n_feats, dec_dim, beta_min, beta_max, pe_scale):
-        super(GradTTS, self).__init__()
+        super(FrameLevelGradTTS, self).__init__()
         self.n_vocab = n_vocab
         self.n_spks = n_spks
         self.spk_emb_dim = spk_emb_dim
@@ -45,7 +45,7 @@ class GradTTS(BaseModule):
         self.encoder = TextEncoder(n_vocab, n_feats, n_enc_channels, 
                                    filter_channels, filter_channels_dp, n_heads, 
                                    n_enc_layers, enc_kernel, enc_dropout, window_size)
-        self.decoder = Diffusion(n_feats, dec_dim, n_spks, spk_emb_dim, beta_min, beta_max, pe_scale)
+        self.decoder = FrameLevelDiffusion(n_feats, dec_dim, n_spks, spk_emb_dim, beta_min, beta_max, pe_scale)
 
     @torch.no_grad()
     def forward(self, x, x_lengths, n_timesteps, temperature=1.0, stoc=False, spk=None, length_scale=1.0):

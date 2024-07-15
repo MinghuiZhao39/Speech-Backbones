@@ -149,7 +149,7 @@ class GradLogPEstimator2d(BaseModule):
         self.ups = torch.nn.ModuleList([])
         num_resolutions = len(in_out)
 
-        for ind, (dim_in, dim_out) in enumerate(in_out): #[(2, 64), (64, 128), (128, 256)]
+        for ind, (dim_in, dim_out) in enumerate(in_out):
             is_last = ind >= (num_resolutions - 1)
             self.downs.append(torch.nn.ModuleList([
                        ResnetBlock(dim_in, dim_out, time_emb_dim=dim),
@@ -213,7 +213,7 @@ class GradLogPEstimator2d(BaseModule):
         x = self.final_block(x, mask) #(16, 1, 80, 172)
         output = self.final_conv(x * mask)
 
-        return (output * mask).squeeze(1) #(16, 1, 80, 172) (16, 1, 1, 172) = (16, 1, 80, 172) (16, 80, 172)
+        return (output * mask).squeeze(1)
 
 
 def get_noise(t, beta_init, beta_term, cumulative=False):
@@ -249,10 +249,10 @@ class Diffusion(BaseModule):
         z = torch.randn(x0.shape, dtype=x0.dtype, device=x0.device, 
                         requires_grad=False)
         xt = mean + z * torch.sqrt(variance)
-        return xt * mask, z * mask 
+        return xt * mask, z * mask
 
     @torch.no_grad()
-    def reverse_diffusion(self, z, mask, mu, n_timesteps, stoc=False, spk=None): # mu (1, 80, 200)
+    def reverse_diffusion(self, z, mask, mu, n_timesteps, stoc=False, spk=None):
         h = 1.0 / n_timesteps
         xt = z * mask
         for i in range(n_timesteps):
@@ -279,11 +279,11 @@ class Diffusion(BaseModule):
         return self.reverse_diffusion(z, mask, mu, n_timesteps, stoc, spk)
 
     def loss_t(self, x0, mask, mu, t, spk=None):
-        xt, z  = self.forward_diffusion(x0, mask, mu, t) #(16, 80, 172)
+        xt, z = self.forward_diffusion(x0, mask, mu, t)
         time = t.unsqueeze(-1).unsqueeze(-1)
-        cum_noise = get_noise(time, self.beta_min, self.beta_max, cumulative=True) #the same as noise calculated in xt
-        noise_estimation = self.estimator(xt, mask, mu, t, spk) #(16, 80, 172)
-        noise_estimation *= torch.sqrt(1.0 - torch.exp(-cum_noise)) # \sqrt(lambda)s_\theta
+        cum_noise = get_noise(time, self.beta_min, self.beta_max, cumulative=True)
+        noise_estimation = self.estimator(xt, mask, mu, t, spk)
+        noise_estimation *= torch.sqrt(1.0 - torch.exp(-cum_noise))
         loss = torch.sum((noise_estimation + z)**2) / (torch.sum(mask)*self.n_feats)
         return loss, xt
 
