@@ -257,23 +257,39 @@ class FrameLevelDiffusion(BaseModule):
         # mask (1, 1, 200) z (1, 80, 200) mu (1, 80, 200)
         h = 1.0 / n_timesteps
         xt = z * mask
-        generated_frames = torch.zeros_like(mu)
         t = torch.tensor([1.0 - (i + 0.5) * h for i in range(n_timesteps)])
         time = t.unsqueeze(-1).unsqueeze(-1)
         noise_t = get_noise(time, self.beta_min, self.beta_max, cumulative=False)
-        noise_estimate = torch.zeros(n_timesteps, mu.shape[1], mu.shape[2])
-        for i in range(n_timesteps):
-            noise_estimate[i:i+1, :, :] = self.estimator(xt, mask, mu, t[i:i+1], spk)
         
+        ## original diffusion calculated frame by frame
+        # for i in range(n_timesteps):
+        #     noise_estimate = self.estimator(xt, mask, mu, t[i:i+1], spk)
+        #     generated_frames = torch.zeros_like(mu)
+        #     for frame_num in range(mu.shape[-1]):
+        #         current_frame = xt[:, :, frame_num]
+        #         dxt = 0.5 * (mu[:, :, frame_num] - current_frame - noise_estimate[:, :, frame_num])
+        #         dxt = dxt * noise_t[i] * h
+        #         current_mask = mask[:, :, frame_num]
+        #         current_frame = (current_frame - dxt) * current_mask 
+        #         generated_frames[:, :, frame_num] = current_frame
+        #     xt = generated_frames
+        
+        # frame level diffusion with intermediate steps
+        generated_frames = torch.zeros_like(mu)
         for frame_num in range(mu.shape[-1]):
+
             current_frame = xt[:, :, frame_num]
+            current_mu = mu[:, :, frame_num]
+            current_mask = mask[:, :, frame_num]
+
             for i in range(n_timesteps):
-                dxt = 0.5 * (mu[:, :, frame_num] - current_frame - noise_estimate[i:i+1, :, frame_num])
-                dxt = dxt * noise_t[i:i+1] * h
-                current_mask = mask[:, :, frame_num:frame_num+1]
-                current_frame = (current_frame - dxt) * current_mask # (1, 80, 200) * (1, 1, 200)
+                dxt = 0.5 * (current_mu - current_frame - self.estimator(current_frame, current_mask, current_mu, t[i:i+1], spk))
+                dxt = dxt * noise_t[i] * h
+                current_frame = (current_frame - dxt) * current_mask
+            
             generated_frames[:, :, frame_num] = current_frame
         return generated_frames
+        
 
     @torch.no_grad()
     def forward(self, z, mask, mu, n_timesteps, stoc=False, spk=None):
