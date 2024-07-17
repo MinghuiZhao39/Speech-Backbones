@@ -175,8 +175,8 @@ class GradLogPEstimator2d(BaseModule):
         if not isinstance(spk, type(None)):
             s = self.spk_mlp(spk)
         
-        t = self.time_pos_emb(t, scale=self.pe_scale)
-        t = self.mlp(t)
+        t = self.time_pos_emb(t, scale=self.pe_scale) # (16, 64)
+        t = self.mlp(t) # (16, 64)
 
         if self.n_spks < 2:
             x = torch.stack([mu, x], 1) #(16, 80, 172) (16, 80, 172) = (16, 2, 80, 172)

@@ -148,9 +148,9 @@ class GradLogPEstimator2d(BaseModule):
         in_out = list(zip(dims[:-1], dims[1:]))
         self.downs = torch.nn.ModuleList([])
         self.ups = torch.nn.ModuleList([])
-        num_resolutions = len(in_out)
+        num_resolutions = len(in_out) # [(2, 64), (64, 128), (128, 256)]
 
-        for ind, (dim_in, dim_out) in enumerate(in_out): #[(2, 64), (64, 128), (128, 256)]
+        for ind, (dim_in, dim_out) in enumerate(in_out):
             is_last = ind >= (num_resolutions - 1)
             self.downs.append(torch.nn.ModuleList([
                        ResnetBlock(dim_in, dim_out, time_emb_dim=dim),
@@ -190,18 +190,19 @@ class GradLogPEstimator2d(BaseModule):
         masks = [mask]
         for resnet1, resnet2, attn, downsample in self.downs:
             mask_down = masks[-1]
-            x = resnet1(x, mask_down, t)
-            x = resnet2(x, mask_down, t)
-            x = attn(x)
+            x = resnet1(x, mask_down, t) #(16, 64, 80, 172) | (16, 128, 40, 86) | (16, 256, 20, 43)
+            x = resnet2(x, mask_down, t) #(16, 64, 80, 172) | (16, 128, 40, 86) | (16, 256, 20, 43)
+            x = attn(x) #(16, 64, 80, 172) | (16, 128, 40, 86) | (16, 256, 20, 43)
             hiddens.append(x)
-            x = downsample(x * mask_down)
+            x = downsample(x * mask_down) #(16, 64, 40, 86) | (16, 128, 20, 43) | (16, 256, 20, 43)
+            hiddens.append(x)
             masks.append(mask_down[:, :, :, ::2])
 
         masks = masks[:-1]
-        mask_mid = masks[-1]
-        x = self.mid_block1(x, mask_mid, t)
-        x = self.mid_attn(x)
-        x = self.mid_block2(x, mask_mid, t)
+        mask_mid = masks[-1] # (16, 1, 1, 43)
+        x = self.mid_block1(x, mask_mid, t) #(16, 256, 20, 43)
+        x = self.mid_attn(x) # (16, 256, 20, 43)
+        x = self.mid_block2(x, mask_mid, t) # (16, 256, 20, 43)
 
         for resnet1, resnet2, attn, upsample in self.ups:
             mask_up = masks.pop()
@@ -231,7 +232,7 @@ class FrameLevelDiffusion(BaseModule):
                  beta_min=0.05, beta_max=20, pe_scale=1000):
         super(FrameLevelDiffusion, self).__init__()
         self.n_feats = n_feats
-        self.dim = dim
+        self.dim = dim # 64
         self.n_spks = n_spks
         self.spk_emb_dim = spk_emb_dim
         self.beta_min = beta_min
@@ -305,7 +306,11 @@ class FrameLevelDiffusion(BaseModule):
         return loss, xt
 
     def compute_loss(self, x0, mask, mu, spk=None, offset=1e-5):
-        t = torch.rand(x0.shape[0], dtype=x0.dtype, device=x0.device,
+        # x0 (16, 80, 64) mask (16, 1, 64) mu (16, 80, 64)
+        x0_ = x0.transpose(1, 2).reshape(-1, 80).unsqueeze(-1)
+        mu_ = mu.transpose(1, 2).reshape(-1, 80).unsqueeze(-1)
+        mask_ = mask.transpose(1, 2).reshape(-1, 1).unsqueeze(-1)
+        t = torch.rand(x0_.shape[0], dtype=x0.dtype, device=x0.device,
                        requires_grad=False)
         t = torch.clamp(t, offset, 1.0 - offset)
-        return self.loss_t(x0, mask, mu, t, spk)
+        return self.loss_t(x0_, mask_, mu_, t, spk)
