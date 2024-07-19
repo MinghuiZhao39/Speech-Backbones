@@ -31,7 +31,7 @@ class Downsample(BaseModule):
     def __init__(self, dim):
         super(Downsample, self).__init__()
         self.conv = torch.nn.Conv2d(dim, dim, 3, 2, 1)
-
+   
     def forward(self, x):
         return self.conv(x)
 

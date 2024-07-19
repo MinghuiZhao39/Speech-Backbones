@@ -126,10 +126,10 @@ class SinusoidalPosEmb(BaseModule):
         return emb
 
 
-class GradLogPEstimator2d(BaseModule):
+class GradLogPEstimator1d(BaseModule):
     def __init__(self, dim, dim_mults=(1, 2, 4), groups=8,
                  n_spks=None, spk_emb_dim=64, n_feats=80, pe_scale=1000):
-        super(GradLogPEstimator2d, self).__init__()
+        super(GradLogPEstimator1d, self).__init__()
         self.dim = dim
         self.dim_mults = dim_mults
         self.groups = groups
@@ -239,7 +239,7 @@ class FrameLevelDiffusion(BaseModule):
         self.beta_max = beta_max
         self.pe_scale = pe_scale
         
-        self.estimator = GradLogPEstimator2d(dim, n_spks=n_spks,
+        self.estimator = GradLogPEstimator1d(dim, n_spks=n_spks,
                                              spk_emb_dim=spk_emb_dim,
                                              pe_scale=pe_scale)
 
