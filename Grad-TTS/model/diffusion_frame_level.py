@@ -1,11 +1,3 @@
-# Copyright (C) 2021. Huawei Technologies Co., Ltd. All rights reserved.
-# This program is free software; you can redistribute it and/or modify
-# it under the terms of the MIT License.
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-# MIT License for more details.
-
 import math
 import torch
 from einops import rearrange
@@ -21,7 +13,7 @@ class Mish(BaseModule):
 class Upsample(BaseModule):
     def __init__(self, dim):
         super(Upsample, self).__init__()
-        self.conv = torch.nn.ConvTranspose2d(dim, dim, 4, 2, 1)
+        self.conv = torch.nn.ConvTranspose1d(dim, dim, 4, 2, 1)
 
     def forward(self, x):
         return self.conv(x)
@@ -30,7 +22,7 @@ class Upsample(BaseModule):
 class Downsample(BaseModule):
     def __init__(self, dim):
         super(Downsample, self).__init__()
-        self.conv = torch.nn.Conv2d(dim, dim, 3, 2, 1)
+        self.conv = torch.nn.Conv1d(dim, dim, 3, 2, 1)
 
     def forward(self, x):
         return self.conv(x)
@@ -49,7 +41,7 @@ class Rezero(BaseModule):
 class Block(BaseModule):
     def __init__(self, dim, dim_out, groups=8):
         super(Block, self).__init__()
-        self.block = torch.nn.Sequential(torch.nn.Conv2d(dim, dim_out, 3, 
+        self.block = torch.nn.Sequential(torch.nn.Conv1d(dim, dim_out, 3, 
                                          padding=1), torch.nn.GroupNorm(
                                          groups, dim_out), Mish())
 
@@ -67,14 +59,13 @@ class ResnetBlock(BaseModule):
         self.block1 = Block(dim, dim_out, groups=groups)
         self.block2 = Block(dim_out, dim_out, groups=groups)
         if dim != dim_out:
-            self.res_conv = torch.nn.Conv2d(dim, dim_out, 1)
+            self.res_conv = torch.nn.Conv1d(dim, dim_out, 1)
         else:
             self.res_conv = torch.nn.Identity()
 
     def forward(self, x, mask, time_emb):
-        # time_emb (1, 1, 1, 64)
-        h = self.block1(x, mask)
-        h += self.mlp(time_emb).unsqueeze(-1).unsqueeze(-1)
+        h = self.block1(x, mask) # (1024, 64, 80)
+        h += self.mlp(time_emb).unsqueeze(-1)
         h = self.block2(h, mask)
         output = h + self.res_conv(x * mask)
         return output
@@ -85,19 +76,19 @@ class LinearAttention(BaseModule):
         super(LinearAttention, self).__init__()
         self.heads = heads
         hidden_dim = dim_head * heads
-        self.to_qkv = torch.nn.Conv2d(dim, hidden_dim * 3, 1, bias=False)
-        self.to_out = torch.nn.Conv2d(hidden_dim, dim, 1)            
+        self.to_qkv = torch.nn.Conv1d(dim, hidden_dim * 3, 1, bias=False)
+        self.to_out = torch.nn.Conv1d(hidden_dim, dim, 1)            
 
     def forward(self, x):
-        b, c, h, w = x.shape
+        b, c, l = x.shape
         qkv = self.to_qkv(x)
-        q, k, v = rearrange(qkv, 'b (qkv heads c) h w -> qkv b heads c (h w)', 
+        q, k, v = rearrange(qkv, 'b (qkv heads c) l -> qkv b heads c l', 
                             heads = self.heads, qkv=3)            
         k = k.softmax(dim=-1)
         context = torch.einsum('bhdn,bhen->bhde', k, v)
         out = torch.einsum('bhde,bhdn->bhen', context, q)
-        out = rearrange(out, 'b heads c (h w) -> b (heads c) h w', 
-                        heads=self.heads, h=h, w=w)
+        out = rearrange(out, 'b heads c l -> b (heads c) l', 
+                        heads=self.heads, l=l)
         return self.to_out(out)
 
 
@@ -170,7 +161,7 @@ class GradLogPEstimator1d(BaseModule):
                      Residual(Rezero(LinearAttention(dim_in))),
                      Upsample(dim_in)]))
         self.final_block = Block(dim, dim)
-        self.final_conv = torch.nn.Conv2d(dim, 1, 1)
+        self.final_conv = torch.nn.Conv1d(dim, 1, 1)
 
     def forward(self, x, mask, mu, t, spk=None):
         if not isinstance(spk, type(None)):
@@ -180,23 +171,23 @@ class GradLogPEstimator1d(BaseModule):
         t = self.mlp(t)
 
         if self.n_spks < 2:
-            x = torch.stack([mu, x], 1) #(16, 80, 172) (16, 80, 172) = (16, 2, 80, 172)
+            x = torch.stack([mu, x], 1).squeeze(2) #(16, 80, 172) (16, 80, 172) = (16, 2, 80, 172)
         else:
             s = s.unsqueeze(-1).repeat(1, 1, x.shape[-1])
             x = torch.stack([mu, x, s], 1)
-        mask = mask.unsqueeze(1) #(16, 1, 1, 172)
+        # mask = mask.unsqueeze(1) #(16, 1, 1, 172)
 
         hiddens = []
         masks = [mask]
         for resnet1, resnet2, attn, downsample in self.downs:
             mask_down = masks[-1]
-            x = resnet1(x, mask_down, t) #(16, 64, 80, 172) | (16, 128, 40, 86) | (16, 256, 20, 43)
-            x = resnet2(x, mask_down, t) #(16, 64, 80, 172) | (16, 128, 40, 86) | (16, 256, 20, 43)
-            x = attn(x) #(16, 64, 80, 172) | (16, 128, 40, 86) | (16, 256, 20, 43)
+            x = resnet1(x, mask_down, t) #(16, 64, 80) | (16, 128, 40, 86) | (16, 256, 20, 43)
+            x = resnet2(x, mask_down, t) #(16, 64, 80) | (16, 128, 40, 86) | (16, 256, 20, 43)
+            x = attn(x) #(16, 64, 80) | (16, 128, 40, 86) | (16, 256, 20, 43)
             hiddens.append(x)
-            x = downsample(x * mask_down) #(16, 64, 40, 86) | (16, 128, 20, 43) | (16, 256, 20, 43)
-            hiddens.append(x)
-            masks.append(mask_down[:, :, :, ::2])
+            x = downsample(x * mask_down) #(16, 64, 40) | (16, 128, 20, 43) | (16, 256, 20, 43)
+            # masks.append(mask_down[:, :, :, ::2])
+            masks.append(mask_down)
 
         masks = masks[:-1]
         mask_mid = masks[-1] # (16, 1, 1, 43)
@@ -215,7 +206,7 @@ class GradLogPEstimator1d(BaseModule):
         x = self.final_block(x, mask) #(16, 1, 80, 172)
         output = self.final_conv(x * mask)
 
-        return (output * mask).squeeze(1) #(16, 1, 80, 172) (16, 1, 1, 172) = (16, 1, 80, 172) (16, 80, 172)
+        return (output * mask) #(16, 1, 80, 172) (16, 1, 1, 172) = (16, 1, 80, 172) (16, 80, 172)
 
 
 def get_noise(t, beta_init, beta_term, cumulative=False):
@@ -244,14 +235,14 @@ class FrameLevelDiffusion(BaseModule):
                                              pe_scale=pe_scale)
 
     def forward_diffusion(self, x0, mask, mu, t):
-        time = t.unsqueeze(-1).unsqueeze(-1) #(16, 1, 1)
+        time = t.unsqueeze(-1).unsqueeze(-1) # (16, 1, 1)
         cum_noise = get_noise(time, self.beta_min, self.beta_max, cumulative=True)
         mean = x0*torch.exp(-0.5*cum_noise) + mu*(1.0 - torch.exp(-0.5*cum_noise))
         variance = 1.0 - torch.exp(-cum_noise)
         z = torch.randn(x0.shape, dtype=x0.dtype, device=x0.device, 
                         requires_grad=False)
         xt = mean + z * torch.sqrt(variance)
-        return xt * mask, z * mask 
+        return xt * mask, z * mask, cum_noise 
 
     @torch.no_grad()
     def reverse_diffusion(self, z, mask, mu, n_timesteps, stoc=False, spk=None): 
@@ -297,9 +288,7 @@ class FrameLevelDiffusion(BaseModule):
         return self.reverse_diffusion(z, mask, mu, n_timesteps, stoc, spk)
 
     def loss_t(self, x0, mask, mu, t, spk=None):
-        xt, z  = self.forward_diffusion(x0, mask, mu, t) #(16, 80, 172)
-        time = t.unsqueeze(-1).unsqueeze(-1) # (16, 1, 1)
-        cum_noise = get_noise(time, self.beta_min, self.beta_max, cumulative=True) #the same as noise calculated in xt (16, 1, 1)
+        xt, z, cum_noise  = self.forward_diffusion(x0, mask, mu, t) #(16, 80, 172)
         noise_estimation = self.estimator(xt, mask, mu, t, spk) #(16, 80, 172)
         noise_estimation *= torch.sqrt(1.0 - torch.exp(-cum_noise)) # \sqrt(lambda)s_\theta
         loss = torch.sum((noise_estimation + z)**2) / (torch.sum(mask)*self.n_feats)
@@ -307,9 +296,9 @@ class FrameLevelDiffusion(BaseModule):
 
     def compute_loss(self, x0, mask, mu, spk=None, offset=1e-5):
         # x0 (16, 80, 64) mask (16, 1, 64) mu (16, 80, 64)
-        x0_ = x0.transpose(1, 2).reshape(-1, 80).unsqueeze(-1)
-        mu_ = mu.transpose(1, 2).reshape(-1, 80).unsqueeze(-1)
-        mask_ = mask.transpose(1, 2).reshape(-1, 1).unsqueeze(-1)
+        x0_ = x0.transpose(1, 2).reshape(-1, 80).unsqueeze(1)
+        mu_ = mu.transpose(1, 2).reshape(-1, 80).unsqueeze(1)
+        mask_ = mask.transpose(1, 2).reshape(-1, 1).unsqueeze(1)
         t = torch.rand(x0_.shape[0], dtype=x0.dtype, device=x0.device,
                        requires_grad=False)
         t = torch.clamp(t, offset, 1.0 - offset)
