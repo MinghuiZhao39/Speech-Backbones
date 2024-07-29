@@ -78,7 +78,7 @@ if __name__ == '__main__':
             x_lengths = torch.LongTensor([x.shape[-1]])
             
             t = dt.datetime.now()
-            y_enc, y_dec, attn = generator.forward(x, x_lengths, n_timesteps=args.timesteps, temperature=1.5,
+            y_enc, y_dec, attn, log_gradient = generator.forward(x, x_lengths, n_timesteps=args.timesteps, temperature=1.5,
                                                    stoc=False, spk=spk, length_scale=0.91)
             t = (dt.datetime.now() - t).total_seconds()
             print(f'Grad-TTS RTF: {t * 22050 / (y_dec.shape[-1] * 256)}')
@@ -86,5 +86,7 @@ if __name__ == '__main__':
             audio = (vocoder.forward(y_dec).cpu().squeeze().clamp(-1, 1).numpy() * 32768).astype(np.int16)
             
             write(f'./out/sample_{i}.wav', 22050, audio)
+
+            torch.save(log_gradient, "./out/noise_est_{}_10.pt".format(i))
 
     print('Done. Check out `out` folder for samples.')
