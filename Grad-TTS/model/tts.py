@@ -93,10 +93,10 @@ class GradTTS(BaseModule):
         # Sample latent representation from terminal distribution N(mu_y, I)
         z = mu_y + torch.randn_like(mu_y, device=mu_y.device) / temperature
         # Generate sample by performing reverse dynamics
-        decoder_outputs, log_gradient = self.decoder(z, y_mask, mu_y, n_timesteps, stoc, spk) #(1, 80, 200)
+        decoder_outputs, log_gradient, noise = self.decoder(z, y_mask, mu_y, n_timesteps, stoc, spk) #(1, 80, 200)
         decoder_outputs = decoder_outputs[:, :, :y_max_length]
 
-        return encoder_outputs, decoder_outputs, attn[:, :, :y_max_length], log_gradient
+        return encoder_outputs, decoder_outputs, attn[:, :, :y_max_length], log_gradient, noise
 
     def compute_loss(self, x, x_lengths, y, y_lengths, spk=None, out_size=None):
         """

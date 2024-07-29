@@ -256,6 +256,7 @@ class Diffusion(BaseModule):
         h = 1.0 / n_timesteps
         xt = z * mask
         log_gradient = torch.zeros(n_timesteps)
+        noise = torch.zeros(n_timesteps)
         for i in range(n_timesteps):
             t = (1.0 - (i + 0.5)*h) * torch.ones(z.shape[0], dtype=z.dtype, 
                                                  device=z.device)
@@ -271,10 +272,12 @@ class Diffusion(BaseModule):
                 dxt = dxt_det + dxt_stoc
             else:
                 log_gradient[i] = torch.sum(self.estimator(xt, mask, mu, t, spk)) / (torch.sum(mask)*self.n_feats)
+                n = torch.rand_like(xt) * mask
+                noise[i] = torch.sum(n) / (torch.sum(mask)*self.n_feats)
                 dxt = 0.5 * (mu - xt - self.estimator(xt, mask, mu, t, spk))
                 dxt = dxt * noise_t * h
             xt = (xt - dxt) * mask
-        return xt, log_gradient
+        return xt, log_gradient, noise
 
     @torch.no_grad()
     def forward(self, z, mask, mu, n_timesteps, stoc=False, spk=None):
