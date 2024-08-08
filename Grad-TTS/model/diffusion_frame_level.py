@@ -181,7 +181,7 @@ class GradLogPEstimator1d(BaseModule):
         masks = [mask]
         for resnet1, resnet2, attn, downsample in self.downs:
             mask_down = masks[-1]
-            x = resnet1(x, mask_down, t) #(16, 64, 80) | (16, 128, 40, 86) | (16, 256, 20, 43)
+            x = resnet1(x, mask_down, t) #(16, 64, 80) (16, 64, 80, 172)| (16, 128, 40, 86) | (16, 256, 20, 43)
             x = resnet2(x, mask_down, t) #(16, 64, 80) | (16, 128, 40, 86) | (16, 256, 20, 43)
             x = attn(x) #(16, 64, 80) | (16, 128, 40, 86) | (16, 256, 20, 43)
             hiddens.append(x)
