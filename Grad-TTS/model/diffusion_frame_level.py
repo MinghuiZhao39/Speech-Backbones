@@ -156,7 +156,7 @@ class GradLogPEstimator1d(BaseModule):
 
         for ind, (dim_in, dim_out) in enumerate(reversed(in_out[1:])):
             self.ups.append(torch.nn.ModuleList([
-                     ResnetBlock(dim_out * 2, dim_in, time_emb_dim=dim),
+                     ResnetBlock(dim_out * 2, dim_in, time_emb_dim=dim), # note the first dimension here * 2
                      ResnetBlock(dim_in, dim_in, time_emb_dim=dim),
                      Residual(Rezero(LinearAttention(dim_in))),
                      Upsample(dim_in)]))
@@ -181,11 +181,11 @@ class GradLogPEstimator1d(BaseModule):
         masks = [mask]
         for resnet1, resnet2, attn, downsample in self.downs:
             mask_down = masks[-1]
-            x = resnet1(x, mask_down, t) #(16, 64, 80) (16, 64, 80, 172)| (16, 128, 40, 86) | (16, 256, 20, 43)
-            x = resnet2(x, mask_down, t) #(16, 64, 80) | (16, 128, 40, 86) | (16, 256, 20, 43)
-            x = attn(x) #(16, 64, 80) | (16, 128, 40, 86) | (16, 256, 20, 43)
+            x = resnet1(x, mask_down, t) #(16, 64, 80, 172)| (16, 128, 40, 86) | (16, 256, 20, 43)
+            x = resnet2(x, mask_down, t) 
+            x = attn(x) 
             hiddens.append(x)
-            x = downsample(x * mask_down) #(16, 64, 40) | (16, 128, 20, 43) | (16, 256, 20, 43)
+            x = downsample(x * mask_down) #(16, 64, 40, 86)| (16, 128, 20, 43) | (16, 256, 20, 43)
             # masks.append(mask_down[:, :, :, ::2])
             masks.append(mask_down)
 
@@ -197,14 +197,14 @@ class GradLogPEstimator1d(BaseModule):
 
         for resnet1, resnet2, attn, upsample in self.ups:
             mask_up = masks.pop()
-            x = torch.cat((x, hiddens.pop()), dim=1)
-            x = resnet1(x, mask_up, t)
-            x = resnet2(x, mask_up, t)
-            x = attn(x)
-            x = upsample(x * mask_up)
+            x = torch.cat((x, hiddens.pop()), dim=1) # (16, 512, 20, 43) | (16, 256, 40, 86)
+            x = resnet1(x, mask_up, t) # (16, 128, 20, 43) | (16, 64, 40, 86)
+            x = resnet2(x, mask_up, t) 
+            x = attn(x) 
+            x = upsample(x * mask_up) #(16, 128, 40, 86) | (16, 64, 80, 172)
 
-        x = self.final_block(x, mask) #(16, 1, 80, 172)
-        output = self.final_conv(x * mask)
+        x = self.final_block(x, mask) #(16, 64, 80, 172)
+        output = self.final_conv(x * mask) #(16, 1, 80, 172)
 
         return (output * mask) #(16, 1, 80, 172) (16, 1, 1, 172) = (16, 1, 80, 172) (16, 80, 172)
 

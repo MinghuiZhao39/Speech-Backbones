@@ -210,8 +210,8 @@ class GradLogPEstimator2d(BaseModule):
             x = attn(x)
             x = upsample(x * mask_up)
 
-        x = self.final_block(x, mask) #(16, 1, 80, 172)
-        output = self.final_conv(x * mask)
+        x = self.final_block(x, mask) 
+        output = self.final_conv(x * mask) #(16, 1, 80, 172)
 
         return (output * mask).squeeze(1)
 
