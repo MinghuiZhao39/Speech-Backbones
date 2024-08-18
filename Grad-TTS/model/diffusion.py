@@ -86,17 +86,32 @@ class LinearAttention(BaseModule):
         hidden_dim = dim_head * heads
         self.to_qkv = torch.nn.Conv2d(dim, hidden_dim * 3, 1, bias=False)
         self.to_out = torch.nn.Conv2d(hidden_dim, dim, 1)            
-
+    
+    def feature_map(self, x):
+        return torch.nn.functional.elu(x) + 1
+    
     def forward(self, x):
         b, c, h, w = x.shape
         qkv = self.to_qkv(x)
         q, k, v = rearrange(qkv, 'b (qkv heads c) h w -> qkv b heads c (h w)', 
                             heads = self.heads, qkv=3)            
-        k = k.softmax(dim=-1)
-        context = torch.einsum('bhdn,bhen->bhde', k, v)
-        out = torch.einsum('bhde,bhdn->bhen', context, q)
-        out = rearrange(out, 'b heads c (h w) -> b (heads c) h w', 
-                        heads=self.heads, h=h, w=w)
+
+        q = self.feature_map(q)
+        k = self.feature_map(k)
+        
+        kv = torch.einsum("nhcd,nhcm->nhdm", k, v)
+        
+        z = 1/(torch.einsum("nhcd,nhd->nhc", q, k.sum(dim=2))+1e-6)
+
+        v = torch.einsum("nhcd,nhdm,nhc->nhcm", q, kv, z)
+        out = rearrange(v, "b heads c (h w) -> b (heads c) h w",
+                        heads = self.heads, h=h, w=w)
+        
+        # k = k.softmax(dim=-1)
+        # context = torch.einsum('bhdn,bhen->bhde', k, v)
+        # out = torch.einsum('bhde,bhdn->bhen', context, q)
+        # out = rearrange(out, 'b heads c (h w) -> b (heads c) h w', 
+        #                 heads=self.heads, h=h, w=w)
         return self.to_out(out)
 
 
