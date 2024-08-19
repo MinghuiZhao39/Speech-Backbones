@@ -103,7 +103,7 @@ class LinearAttention(BaseModule):
         
         z = 1/(torch.einsum("nhcd,nhd->nhc", q, k.sum(dim=2))+1e-6)
 
-        v = torch.einsum("nhcd,nhdm,nhc->nhcm", q, kv, z)
+        v = torch.einsum("nhcd,nhdm,nhc->nhcm", q, kv, z).contiguous()
         out = rearrange(v, "b heads c (h w) -> b (heads c) h w",
                         heads = self.heads, h=h, w=w)
         
