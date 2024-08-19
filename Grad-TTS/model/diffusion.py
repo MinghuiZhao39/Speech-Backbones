@@ -96,22 +96,27 @@ class LinearAttention(BaseModule):
         q, k, v = rearrange(qkv, 'b (qkv heads c) h w -> qkv b heads c (h w)', 
                             heads = self.heads, qkv=3)            
 
-        q = self.feature_map(q)
-        k = self.feature_map(k)
+        # # linear attention implementation
+        # q = self.feature_map(q)
+        # k = self.feature_map(k)
         
-        kv = torch.einsum("nhcd,nhcm->nhdm", k, v)
+        # kv = torch.einsum("nhcd,nhcm->nhdm", k, v)
         
-        z = 1/(torch.einsum("nhcd,nhd->nhc", q, k.sum(dim=2))+1e-6)
+        # z = 1/(torch.einsum("nhcd,nhd->nhc", q, k.sum(dim=2))+1e-6)
 
-        v = torch.einsum("nhcd,nhdm,nhc->nhcm", q, kv, z).contiguous()
-        out = rearrange(v, "b heads c (h w) -> b (heads c) h w",
-                        heads = self.heads, h=h, w=w)
+        # v = torch.einsum("nhcd,nhdm,nhc->nhcm", q, kv, z).contiguous()
+        # out = rearrange(v, "b heads c (h w) -> b (heads c) h w",
+        #                 heads = self.heads, h=h, w=w)
         
-        # k = k.softmax(dim=-1)
-        # context = torch.einsum('bhdn,bhen->bhde', k, v)
-        # out = torch.einsum('bhde,bhdn->bhen', context, q)
-        # out = rearrange(out, 'b heads c (h w) -> b (heads c) h w', 
-        #                 heads=self.heads, h=h, w=w)
+        # revised efficient attention
+        k = k.softmax(dim=-1)
+        q = q.softmax(dim=2)
+        
+        context = torch.einsum('bhdn,bhen->bhde', k, v)
+        out = torch.einsum('bhde,bhdn->bhen', context, q)
+        out = rearrange(out, 'b heads c (h w) -> b (heads c) h w', 
+                        heads=self.heads, h=h, w=w)
+
         return self.to_out(out)
 
 
