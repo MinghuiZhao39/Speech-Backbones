@@ -7,4 +7,3 @@
 # MIT License for more details.
 
 from .tts import GradTTS
-from .tts_frame_level import FrameLevelGradTTS
