@@ -78,11 +78,11 @@ class GradLogPEstimator2d(BaseModule):
         masks = [mask]
         for resnet1, resnet2, attn, downsample in self.downs:
             mask_down = masks[-1]
-            x = resnet1(x, mask_down, t)
+            x = resnet1(x, mask_down, t) # (16, 64, 80, 172) (16, 128, 80, 86) (16, 256, 20, 43)
             x = resnet2(x, mask_down, t)
             x = attn(x)
             hiddens.append(x)
-            x = downsample(x * mask_down)
+            x = downsample(x * mask_down) # (16, 64, 40, 86) (16, 128, 20, 43) (16, 256, 20, 43)
             masks.append(mask_down[:, :, :, ::2])
 
         masks = masks[:-1]
@@ -93,14 +93,14 @@ class GradLogPEstimator2d(BaseModule):
 
         for resnet1, resnet2, attn, upsample in self.ups:
             mask_up = masks.pop()
-            x = torch.cat((x, hiddens.pop()), dim=1)
-            x = resnet1(x, mask_up, t)
+            x = torch.cat((x, hiddens.pop()), dim=1) # (16, 512, 20, 43) (16, 256, 40, 86)
+            x = resnet1(x, mask_up, t) # (16, 128, 20, 43) (16, 64, 40, 86)
             x = resnet2(x, mask_up, t)
             x = attn(x)
-            x = upsample(x * mask_up)
+            x = upsample(x * mask_up) # (16, 128, 40, 86) (16, 64, 80, 172)
 
-        x = self.final_block(x, mask) 
-        output = self.final_conv(x * mask) #(16, 1, 80, 172)
+        x = self.final_block(x, mask) # (16, 64, 80, 172)
+        output = self.final_conv(x * mask) # (16, 1, 80, 172)
 
         return (output * mask).squeeze(1)
 
