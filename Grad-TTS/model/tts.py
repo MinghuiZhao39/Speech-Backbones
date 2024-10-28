@@ -256,6 +256,9 @@ class GradTTS(BaseModule):
         sos_vector = torch.full((m.shape[0], 1, m.shape[2]), -1).to(self.device) ##TODO: effective way to check device 
         m = torch.cat((sos_vector, m[:, :-1, :]), 1)
         
+        sos_mask = torch.full((y_mask.shape[0], y_mask.shape[1], 1), 1).to(self.device)
+        y_mask = torch.cat((sos_mask, y_mask[:, :, :-1]), 2)
+        
         tgt_mask = torch.cat([y_mask[i].int() & causal_mask(out_size).to(self.device) for i in range(y_mask.shape[0])], 0)
         
         mu_y = self.shifter.decode(m, y_mask.unsqueeze(1), y.transpose(1, 2), tgt_mask.unsqueeze(1), None)
