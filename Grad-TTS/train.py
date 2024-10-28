@@ -121,6 +121,7 @@ if __name__ == "__main__":
         beta_min,
         beta_max,
         pe_scale,
+        device
     ).to(device)
     print(
         "Number of encoder + duration predictor parameters: %.2fm"

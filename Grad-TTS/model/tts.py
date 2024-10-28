@@ -46,6 +46,7 @@ class GradTTS(BaseModule):
         beta_min,
         beta_max,
         pe_scale,
+        device
     ):
         super(GradTTS, self).__init__()
         self.n_vocab = n_vocab
@@ -65,6 +66,7 @@ class GradTTS(BaseModule):
         self.beta_min = beta_min
         self.beta_max = beta_max
         self.pe_scale = pe_scale
+        self.device = device
 
         if n_spks > 1:
             self.spk_emb = torch.nn.Embedding(n_spks, spk_emb_dim)
@@ -251,10 +253,10 @@ class GradTTS(BaseModule):
             attn.squeeze(1).transpose(1, 2), mu_x.transpose(1, 2)
         )  # (16, 172, 265), (16, 265, 80) = (16, 172, 80)
         
-        sos_vector = torch.full((m.shape[0], 1, m.shape[2]), -1)
+        sos_vector = torch.full((m.shape[0], 1, m.shape[2]), -1).to(self.device) ##TODO: effective way to check device 
         m = torch.cat((sos_vector, m[:, :-1, :]), 1)
         
-        tgt_mask = torch.cat([y_mask[i].int() & causal_mask(out_size) for i in range(y_mask.shape[0])], 0)
+        tgt_mask = torch.cat([y_mask[i].int() & causal_mask(out_size).to(self.device) for i in range(y_mask.shape[0])], 0)
         
         mu_y = self.shifter.decode(m, y_mask.unsqueeze(1), y.transpose(1, 2), tgt_mask.unsqueeze(1), None)
         mu_y = self.shifter.project(mu_y).transpose(1, 2) # (16, 80, 172)
