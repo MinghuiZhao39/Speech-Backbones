@@ -9,6 +9,25 @@ def sequence_mask(length, max_length=None):
     x = torch.arange(int(max_length), dtype=length.dtype, device=length.device)
     return x.unsqueeze(0) < length.unsqueeze(1) #(1, 55) (1, 1)
 
+def causal_mask(size):
+    """
+    Generates a causal mask for a sequence of a given size.
+
+    The causal mask is an upper triangular matrix with ones above the diagonal
+    and zeros on and below the diagonal. This mask is used to prevent the model
+    from attending to future tokens in a sequence.
+
+    Args:
+        size (int): The size of the sequence for which the mask is generated.
+
+    Returns:
+        torch.Tensor: A boolean tensor of shape (1, size, size) where True indicates
+                      positions that are allowed to be attended to and False indicates
+                      positions that are masked.
+    """
+    mask = torch.triu(torch.ones((1, size, size)), diagonal=1).type(torch.int)
+    return mask == 0
+
 
 def fix_len_compatibility(length, num_downsamplings_in_unet=2):
     while True:
@@ -42,3 +61,25 @@ def generate_path(duration, mask):
 def duration_loss(logw, logw_, lengths):
     loss = torch.sum((logw - logw_)**2) / torch.sum(lengths)
     return loss
+
+def compute_eos_loss(predictions, eos_targets, mask):
+        """
+        Computes the end-of-sequence (EOS) loss using negative log likelihood (binary cross entropy).
+
+        Args:
+            predictions (torch.Tensor): The predicted logits of shape (batch_size, sequence_length, num_classes).
+            eos_targets (torch.Tensor): The target EOS indices of shape (batch_size, sequence_length).
+            mask (torch.Tensor): A mask tensor of shape (batch_size, sequence_length) indicating valid positions.
+
+        Returns:
+            torch.Tensor: The computed EOS loss.
+        """
+        # Apply log softmax to predictions
+        log_softmax = torch.log_softmax(predictions, dim=-1)
+        # Gather the log probabilities corresponding to the targets
+        log_probs = log_softmax.gather(dim=-1, index=eos_targets.unsqueeze(-1)).squeeze(-1)
+        # Apply mask to log probabilities
+        log_probs = log_probs * mask
+        # Calculate the negative log likelihood
+        nll_loss = -log_probs.sum() / mask.sum()
+        return nll_loss

@@ -36,6 +36,9 @@ enc_dropout = 0.1
 n_heads = 2
 window_size = 4
 
+# shifter prameters
+tgt_seq_len = 1000
+
 # decoder parameters
 dec_dim = 64
 beta_min = 0.05
