@@ -35,6 +35,13 @@ def fix_len_compatibility(length, num_downsamplings_in_unet=2):
             return length
         length += 1
 
+def segment_sequence_to_batch(sequence, batch_size, dim):
+    if sequence.size(dim) % batch_size != 0:
+        raise ValueError("sequence length (dim = 1) must be divisible by batch size")
+    segments = sequence.split(batch_size, dim=dim)
+    batched = torch.cat(segments[:-1], dim=0)
+    return batched
+    
 
 def convert_pad_shape(pad_shape):
     l = pad_shape[::-1]

@@ -22,7 +22,7 @@ from model.utils import (
     duration_loss,
     fix_len_compatibility,
     causal_mask,
-    compute_eos_loss,
+    segment_sequence_to_batch,
 )
 
 
@@ -97,6 +97,7 @@ class GradTTS(BaseModule):
         stoc=False,
         spk=None,
         length_scale=1.0,
+        out_size=172,
     ):
         """
         Generates mel-spectrogram from text. Returns:
@@ -127,13 +128,17 @@ class GradTTS(BaseModule):
         w_ceil = torch.ceil(w) * length_scale  # (1, 1, 55)
         y_lengths = torch.clamp_min(torch.sum(w_ceil, [1, 2]), 1).long()
         y_max_length = int(y_lengths.max())
-        y_max_length_ = fix_len_compatibility(
-            y_max_length
-        )  # so that y_max_length is multiple of (4)
+        # y_max_length_ = fix_len_compatibility(
+        #     y_max_length
+        # )  # so that y_max_length is multiple of (4)
+
+        batch_size, last_batch_length = divmod(y_max_length, out_size)
+        if last_batch_length:
+            batch_size += 1
 
         # Using obtained durations `w` construct alignment map `attn`
         y_mask = (
-            sequence_mask(y_lengths, y_max_length_).unsqueeze(1).to(x_mask.dtype)
+            sequence_mask(y_lengths, batch_size*out_size).unsqueeze(1).to(x_mask.dtype)
         )  # (1, 1, 200)
         attn_mask = x_mask.unsqueeze(-1) * y_mask.unsqueeze(
             2
@@ -146,9 +151,24 @@ class GradTTS(BaseModule):
         mu_y = torch.matmul(
             attn.squeeze(1).transpose(1, 2), mu_x.transpose(1, 2)
         )  # (1, 200, 55) (1, 55, 80) align \tilde{\mu} to \mu
-        mu_y = mu_y.transpose(1, 2)  # (1, 80, 200)
-        encoder_outputs = mu_y[:, :, :y_max_length]  # (1, 80, 197)
 
+        encoder_output = mu_y[:, :y_max_length, :] # (1, 197, 80)
+
+        decoder_inputs = torch.full((batch_size, 1, out_size), -1).to(x.device)
+        
+        batched_encoder_outputs = segment_sequence_to_batch(encoder_output, out_size, 1).to(x.device) # (bs, multiple(out_size), 80)
+        batched_y_mask = segment_sequence_to_batch(y_mask, out_size, 2).to(x.device) # (bs, 1, multiple(out_size))
+        
+        while decoder_input.size(2) < out_size:
+            # build mask for target and calculate output
+            decoder_mask = torch.triu(torch.ones((batch_size, decoder_input.size(2), decoder_input.size(2))), diagonal=1).type(torch.int)
+            out = self.shifter.decode(batched_encoder_outputs, batched_y_mask.unsqueeze(1), decoder_inputs, decoder_mask)
+
+            # project next token
+            predicted_next_frame = self.shifter.project(out[:, -1])
+            decoder_input = torch.cat([decoder_input, predicted_next_frame], dim=1)
+
+        mu_y = decoder_input.reshape(1, batch_size*out_size, self.n_feats) # (1, multiple(out_size), 80)
         # Sample latent representation from terminal distribution N(mu_y, I)
         z = mu_y + torch.randn_like(mu_y, device=mu_y.device) / temperature
         # Generate sample by performing reverse dynamics
@@ -157,7 +177,7 @@ class GradTTS(BaseModule):
         )  # (1, 80, 200)
         decoder_outputs = decoder_outputs[:, :, :y_max_length]
 
-        return encoder_outputs, decoder_outputs, attn[:, :, :y_max_length]
+        return encoder_output, decoder_outputs, attn[:, :, :y_max_length]
 
     def compute_loss(self, x, x_lengths, y, y_lengths, spk=None, out_size=None):
         """
@@ -254,14 +274,14 @@ class GradTTS(BaseModule):
         )  # (16, 172, 265), (16, 265, 80) = (16, 172, 80)
         
         sos_vector = torch.full((m.shape[0], 1, m.shape[2]), -1).to(self.device) ##TODO: effective way to check device 
-        m = torch.cat((sos_vector, m[:, :-1, :]), 1)
+        decoder_input = torch.cat((sos_vector, y.tranpose(1, 2)[:, :-1, :]), 1)
         
         sos_mask = torch.full((y_mask.shape[0], y_mask.shape[1], 1), 1).to(self.device)
         y_mask = torch.cat((sos_mask, y_mask[:, :, :-1]), 2)
         
         tgt_mask = torch.cat([y_mask[i].int() & causal_mask(out_size).to(self.device) for i in range(y_mask.shape[0])], 0)
         
-        mu_y = self.shifter.decode(m, y_mask.unsqueeze(1), y.transpose(1, 2), tgt_mask.unsqueeze(1), None)
+        mu_y = self.shifter.decode(m, y_mask.unsqueeze(1), decoder_input, tgt_mask.unsqueeze(1), None)
         mu_y = self.shifter.project(mu_y).transpose(1, 2) # (16, 80, 172)
 
         # Compute loss of score-based decoder
