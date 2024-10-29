@@ -274,8 +274,6 @@ if __name__ == "__main__":
                     msg = f"Epoch: {epoch}, iteration: {iteration} | dur_loss: {dur_loss.item()}, prior_loss: {prior_loss.item()}, diff_loss: {diff_loss.item()}"
                     progress_bar.set_description(msg)
 
-                iteration += 1
-                
         log_msg = "Epoch %d: duration loss = %.3f " % (epoch, np.mean(dur_losses))
         log_msg += "| prior loss = %.3f " % np.mean(prior_losses)
         log_msg += "| diffusion loss = %.3f\n" % np.mean(diff_losses)
