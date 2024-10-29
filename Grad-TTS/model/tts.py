@@ -128,9 +128,9 @@ class GradTTS(BaseModule):
         w_ceil = torch.ceil(w) * length_scale  # (1, 1, 55)
         y_lengths = torch.clamp_min(torch.sum(w_ceil, [1, 2]), 1).long()
         y_max_length = int(y_lengths.max())
-        # y_max_length_ = fix_len_compatibility(
-        #     y_max_length
-        # )  # so that y_max_length is multiple of (4)
+        y_max_length_ = fix_len_compatibility(
+            y_max_length
+        )  # so that y_max_length is multiple of (4)
 
         batch_size, last_batch_length = divmod(y_max_length, out_size)
         if last_batch_length:
@@ -148,15 +148,15 @@ class GradTTS(BaseModule):
         )  # (1, 1, 55, 200)
 
         # Align encoded text and get mu_y
-        mu_y = torch.matmul(
+        m = torch.matmul(
             attn.squeeze(1).transpose(1, 2), mu_x.transpose(1, 2)
         )  # (1, 200, 55) (1, 55, 80) align \tilde{\mu} to \mu
 
-        encoder_output = mu_y[:, :y_max_length, :] # (1, 197, 80)
+        encoder_output = m[:, :y_max_length, :] # (1, 197, 80)
 
-        decoder_inputs = torch.full((batch_size, 1, self.n_feats), -1).type(mu_y.dtype).to(x.device) ##TODO: check mu_y.dtype
+        decoder_inputs = torch.full((batch_size, 1, self.n_feats), -1).type(m.dtype).to(x.device) ##TODO: check mu_y.dtype
         
-        batched_encoder_outputs = segment_sequence_to_batch(mu_y, out_size, 1).to(x.device) # (bs, multiple(out_size), 80)
+        batched_encoder_outputs = segment_sequence_to_batch(m, out_size, 1).to(x.device) # (bs, multiple(out_size), 80)
         batched_y_mask = segment_sequence_to_batch(y_mask, out_size, 2).type(torch.int).to(x.device) # (bs, 1, multiple(out_size))
         
         while decoder_inputs.size(1) <= out_size:
@@ -169,7 +169,8 @@ class GradTTS(BaseModule):
             decoder_inputs = torch.cat([decoder_inputs, predicted_next_frame.unsqueeze(1)], dim=1)
         
         decoder_inputs = decoder_inputs[:, 1:, :]
-        mu_y = decoder_inputs.reshape(1, batch_size*out_size, self.n_feats).transpose(1, 2) # (1, 80, multiple(out_size))
+        mu_y = decoder_inputs.reshape(1, batch_size*out_size, self.n_feats).transpose(1, 2)[:, :, :y_max_length_] # (1, 80, multiple(out_size))
+        y_mask = sequence_mask(y_lengths, y_max_length_).unsqueeze(1).to(x_mask.dtype) 
         # Sample latent representation from terminal distribution N(mu_y, I)
         z = mu_y + torch.randn_like(mu_y, device=mu_y.device) / temperature
         # Generate sample by performing reverse dynamics

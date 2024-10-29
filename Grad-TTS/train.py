@@ -130,10 +130,10 @@ if __name__ == "__main__":
     print("Number of decoder parameters: %.2fm" % (model.decoder.nparams / 1e6))
     print("Total parameters: %.2fm" % (model.nparams / 1e6))
 
-    print("Freezing encoder and duration predictor...")
-    model.encoder.load_state_dict(torch.load('checkpts/encoder-duration-predictor.pt', map_location=lambda loc, storage: loc))
-    for param in model.encoder.parameters():
-        param.requires_grad = False
+    # print("Freezing encoder and duration predictor...")
+    # model.encoder.load_state_dict(torch.load('checkpts/encoder-duration-predictor.pt', map_location=lambda loc, storage: loc))
+    # for param in model.encoder.parameters():
+    #     param.requires_grad = False
 
     print("Initializing optimizer...")
     optimizer = torch.optim.Adam(params=model.parameters(), lr=learning_rate)
@@ -249,5 +249,37 @@ if __name__ == "__main__":
                 save_plot(y_dec.squeeze().cpu(), f"{log_dir}/generated_dec_{i}.png")
                 save_plot(attn.squeeze().cpu(), f"{log_dir}/alignment_{i}.png")
 
+        with tqdm(loader, total=len(test_dataset) // batch_size) as progress_bar:
+            for batch_idx, batch in enumerate(progress_bar):
+                model.zero_grad()
+                x, x_lengths = batch["x"].to(device), batch["x_lengths"].to(device)
+                y, y_lengths = batch["y"].to(device), batch["y_lengths"].to(device)
+                dur_loss, prior_loss, diff_loss = model.compute_loss(
+                    x, x_lengths, y, y_lengths, out_size=out_size
+                )
+                loss = sum([dur_loss, prior_loss, diff_loss])
+
+                enc_grad_norm = torch.nn.utils.clip_grad_norm_(
+                    model.encoder.parameters(), max_norm=1
+                )
+                dec_grad_norm = torch.nn.utils.clip_grad_norm_(
+                    model.decoder.parameters(), max_norm=1
+                )
+
+                dur_losses.append(dur_loss.item())
+                prior_losses.append(prior_loss.item())
+                diff_losses.append(diff_loss.item())
+
+                if batch_idx % 5 == 0:
+                    msg = f"Epoch: {epoch}, iteration: {iteration} | dur_loss: {dur_loss.item()}, prior_loss: {prior_loss.item()}, diff_loss: {diff_loss.item()}"
+                    progress_bar.set_description(msg)
+
+                iteration += 1
+                
+        log_msg = "Epoch %d: duration loss = %.3f " % (epoch, np.mean(dur_losses))
+        log_msg += "| prior loss = %.3f " % np.mean(prior_losses)
+        log_msg += "| diffusion loss = %.3f\n" % np.mean(diff_losses)
+        with open(f"{log_dir}/train_valid.log", "a") as f:
+            f.write(log_msg)
         ckpt = model.state_dict()
         torch.save(ckpt, f=f"{log_dir}/grad_{epoch}.pt")
