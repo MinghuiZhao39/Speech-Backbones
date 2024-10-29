@@ -279,7 +279,12 @@ class Shifter(nn.Module):
         tgt_mask: torch.Tensor,
         segment_index: torch.Tensor,
     ):
-        # (batch, seq_len, d_model)
+        '''
+        encoder_out: (bs, seq_len, n_feats)
+        src_mask: (bs, 1, 1, seq_len)
+        tgt: (bs, seq_len, d_model)
+        tgt_mask: (bs, 1, seq_len, seq_len)
+        ''' 
         if self.tgt_pos:
             tgt = self.tgt_pos(tgt, segment_index[0], segment_index[1])
         
@@ -301,8 +306,8 @@ def build_shifter(
     output_dim: int,
     tgt_seq_len: int,
     d_model: int = 512,
-    N: int = 6,
-    h: int = 8,
+    N: int = 2,
+    h: int = 4,
     dropout: float = 0.1,
     d_ff: int = 2048,
     predict_eos: bool = False,

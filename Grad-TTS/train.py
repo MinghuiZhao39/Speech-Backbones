@@ -130,6 +130,11 @@ if __name__ == "__main__":
     print("Number of decoder parameters: %.2fm" % (model.decoder.nparams / 1e6))
     print("Total parameters: %.2fm" % (model.nparams / 1e6))
 
+    print("Freezing encoder and duration predictor...")
+    model.encoder.load_state_dict(torch.load('checkpts/encoder-duration-predictor.pt', map_location=lambda loc, storage: loc))
+    for param in model.encoder.parameters():
+        param.requires_grad = False
+
     print("Initializing optimizer...")
     optimizer = torch.optim.Adam(params=model.parameters(), lr=learning_rate)
 
@@ -208,14 +213,22 @@ if __name__ == "__main__":
 
         model.eval()
         print("Synthesis...")
+        # torch.save(model.state_dict(), f=f"{log_dir}/developing_grad_{epoch}.pt")
+        # break
         with torch.no_grad():
             for i, item in enumerate(test_batch):
                 x = item["x"].to(torch.long).unsqueeze(0).to(device)
                 x_lengths = torch.LongTensor([x.shape[-1]]).to(device)
-                y_enc, y_dec, attn = model(x, x_lengths, n_timesteps=50)
+                y_enc, attended_y_enc, y_dec, attn = model(x, x_lengths, n_timesteps=50)
                 logger.add_image(
                     f"image_{i}/generated_enc",
                     plot_tensor(y_enc.squeeze().cpu()),
+                    global_step=iteration,
+                    dataformats="HWC",
+                )
+                logger.add_image(
+                    f"image_{i}/generated_attended_enc",
+                    plot_tensor(attended_y_enc.squeeze().cpu()),
                     global_step=iteration,
                     dataformats="HWC",
                 )
@@ -224,7 +237,7 @@ if __name__ == "__main__":
                     plot_tensor(y_dec.squeeze().cpu()),
                     global_step=iteration,
                     dataformats="HWC",
-                )
+                ) 
                 logger.add_image(
                     f"image_{i}/alignment",
                     plot_tensor(attn.squeeze().cpu()),
@@ -232,6 +245,7 @@ if __name__ == "__main__":
                     dataformats="HWC",
                 )
                 save_plot(y_enc.squeeze().cpu(), f"{log_dir}/generated_enc_{i}.png")
+                save_plot(attended_y_enc.squeeze().cpu(), f"{log_dir}/generated_attended_enc_{i}.png")
                 save_plot(y_dec.squeeze().cpu(), f"{log_dir}/generated_dec_{i}.png")
                 save_plot(attn.squeeze().cpu(), f"{log_dir}/alignment_{i}.png")
 

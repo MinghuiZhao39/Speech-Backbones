@@ -39,7 +39,7 @@ def segment_sequence_to_batch(sequence, batch_size, dim):
     if sequence.size(dim) % batch_size != 0:
         raise ValueError("sequence length (dim = 1) must be divisible by batch size")
     segments = sequence.split(batch_size, dim=dim)
-    batched = torch.cat(segments[:-1], dim=0)
+    batched = torch.cat(segments, dim=0)
     return batched
     
 

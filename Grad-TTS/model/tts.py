@@ -154,21 +154,22 @@ class GradTTS(BaseModule):
 
         encoder_output = mu_y[:, :y_max_length, :] # (1, 197, 80)
 
-        decoder_inputs = torch.full((batch_size, 1, out_size), -1).to(x.device)
+        decoder_inputs = torch.full((batch_size, 1, self.n_feats), -1).type(mu_y.dtype).to(x.device) ##TODO: check mu_y.dtype
         
-        batched_encoder_outputs = segment_sequence_to_batch(encoder_output, out_size, 1).to(x.device) # (bs, multiple(out_size), 80)
-        batched_y_mask = segment_sequence_to_batch(y_mask, out_size, 2).to(x.device) # (bs, 1, multiple(out_size))
+        batched_encoder_outputs = segment_sequence_to_batch(mu_y, out_size, 1).to(x.device) # (bs, multiple(out_size), 80)
+        batched_y_mask = segment_sequence_to_batch(y_mask, out_size, 2).type(torch.int).to(x.device) # (bs, 1, multiple(out_size))
         
-        while decoder_input.size(2) < out_size:
+        while decoder_inputs.size(1) <= out_size:
             # build mask for target and calculate output
-            decoder_mask = torch.triu(torch.ones((batch_size, decoder_input.size(2), decoder_input.size(2))), diagonal=1).type(torch.int)
-            out = self.shifter.decode(batched_encoder_outputs, batched_y_mask.unsqueeze(1), decoder_inputs, decoder_mask)
+            decoder_mask = torch.triu(torch.ones((batch_size, decoder_inputs.size(1), decoder_inputs.size(1))), diagonal=1).type(torch.int).to(x.device)
+            out = self.shifter.decode(batched_encoder_outputs, batched_y_mask.unsqueeze(1), decoder_inputs, decoder_mask.unsqueeze(1), None)
 
             # project next token
             predicted_next_frame = self.shifter.project(out[:, -1])
-            decoder_input = torch.cat([decoder_input, predicted_next_frame], dim=1)
-
-        mu_y = decoder_input.reshape(1, batch_size*out_size, self.n_feats) # (1, multiple(out_size), 80)
+            decoder_inputs = torch.cat([decoder_inputs, predicted_next_frame.unsqueeze(1)], dim=1)
+        
+        decoder_inputs = decoder_inputs[:, 1:, :]
+        mu_y = decoder_inputs.reshape(1, batch_size*out_size, self.n_feats).transpose(1, 2) # (1, 80, multiple(out_size))
         # Sample latent representation from terminal distribution N(mu_y, I)
         z = mu_y + torch.randn_like(mu_y, device=mu_y.device) / temperature
         # Generate sample by performing reverse dynamics
@@ -177,7 +178,7 @@ class GradTTS(BaseModule):
         )  # (1, 80, 200)
         decoder_outputs = decoder_outputs[:, :, :y_max_length]
 
-        return encoder_output, decoder_outputs, attn[:, :, :y_max_length]
+        return encoder_output.transpose(1, 2), mu_y, decoder_outputs, attn[:, :, :y_max_length]
 
     def compute_loss(self, x, x_lengths, y, y_lengths, spk=None, out_size=None):
         """
@@ -274,7 +275,7 @@ class GradTTS(BaseModule):
         )  # (16, 172, 265), (16, 265, 80) = (16, 172, 80)
         
         sos_vector = torch.full((m.shape[0], 1, m.shape[2]), -1).to(self.device) ##TODO: effective way to check device 
-        decoder_input = torch.cat((sos_vector, y.tranpose(1, 2)[:, :-1, :]), 1)
+        decoder_input = torch.cat((sos_vector, y.transpose(1, 2)[:, :-1, :]), 1)
         
         sos_mask = torch.full((y_mask.shape[0], y_mask.shape[1], 1), 1).to(self.device)
         y_mask = torch.cat((sos_mask, y_mask[:, :, :-1]), 2)
