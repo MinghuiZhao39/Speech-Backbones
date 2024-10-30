@@ -279,11 +279,11 @@ class GradTTS(BaseModule):
         decoder_input = torch.cat((sos_vector, y.transpose(1, 2)[:, :-1, :]), 1)
         
         sos_mask = torch.full((y_mask.shape[0], y_mask.shape[1], 1), 1).to(self.device)
-        y_mask = torch.cat((sos_mask, y_mask[:, :, :-1]), 2)
+        y_mask_ = torch.cat((sos_mask, y_mask[:, :, :-1]), 2)
         
-        tgt_mask = torch.cat([y_mask[i].int() & causal_mask(out_size).to(self.device) for i in range(y_mask.shape[0])], 0)
+        tgt_mask = torch.cat([y_mask[i].int() & causal_mask(out_size).to(self.device) for i in range(y_mask_.shape[0])], 0)
         
-        mu_y = self.shifter.decode(m, y_mask.unsqueeze(1), decoder_input, tgt_mask.unsqueeze(1), None)
+        mu_y = self.shifter.decode(m, y_mask_.unsqueeze(1), decoder_input, tgt_mask.unsqueeze(1), None)
         mu_y = self.shifter.project(mu_y).transpose(1, 2) # (16, 80, 172)
 
         # Compute loss of score-based decoder
