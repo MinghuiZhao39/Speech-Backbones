@@ -216,7 +216,7 @@ class Diffusion(BaseModule):
         noise_estimation = self.estimator(xt, mask, mu, t, spk)
         noise_estimation *= torch.sqrt(1.0 - torch.exp(-cum_noise))
         loss = torch.sum((noise_estimation + z) ** 2) / (torch.sum(mask) * self.n_feats)
-        return loss, xt
+        return loss, xt, noise_estimation, z
 
     def compute_loss(self, x0, mask, mu, spk=None, offset=1e-5):
         t = torch.rand(

@@ -134,6 +134,7 @@ if __name__ == "__main__":
     # model.encoder.load_state_dict(torch.load('checkpts/encoder-duration-predictor.pt', map_location=lambda loc, storage: loc))
     # for param in model.encoder.parameters():
     #     param.requires_grad = False
+    # model.load_state_dict(torch.load("logs/re-diff/developing_grad_1.pt", map_location=lambda loc, storage: loc))
 
     print("Initializing optimizer...")
     optimizer = torch.optim.Adam(params=model.parameters(), lr=learning_rate)
@@ -162,7 +163,7 @@ if __name__ == "__main__":
                 model.zero_grad()
                 x, x_lengths = batch["x"].to(device), batch["x_lengths"].to(device)
                 y, y_lengths = batch["y"].to(device), batch["y_lengths"].to(device)
-                dur_loss, prior_loss, diff_loss = model.compute_loss(
+                dur_loss, prior_loss, diff_loss, _, _ = model.compute_loss(
                     x, x_lengths, y, y_lengths, out_size=out_size
                 )
                 loss = sum([dur_loss, prior_loss, diff_loss])
@@ -213,13 +214,36 @@ if __name__ == "__main__":
 
         model.eval()
         print("Synthesis...")
-        # torch.save(model.state_dict(), f=f"{log_dir}/developing_grad_{epoch}.pt")
-        # break
+    #     torch.save(model.state_dict(), f=f"{log_dir}/developing_grad_{epoch}.pt")
+    #     break
         with torch.no_grad():
             for i, item in enumerate(test_batch):
-                x = item["x"].to(torch.long).unsqueeze(0).to(device)
+                # x_ = item["x"].to(torch.long).unsqueeze(0).to(device)
+                # x_lengths_ = torch.LongTensor([x_.shape[-1]]).to(device)
+               
+                x = item["x"].to(device).unsqueeze(0)
                 x_lengths = torch.LongTensor([x.shape[-1]]).to(device)
+                y = item["y"].to(device).unsqueeze(0)
+                y_lengths = torch.LongTensor([y.shape[-1]]).to(device)
+
+                dur_loss, prior_loss, diff_loss, noise_estimation, noise_reference= model.compute_loss(
+                    x, x_lengths, y, y_lengths, out_size=out_size
+                )
                 y_enc, attended_y_enc, y_dec, attn = model(x, x_lengths, n_timesteps=50)
+
+                logger.add_image(
+                    f"image_{i}/noise_est",
+                    plot_tensor(noise_estimation.squeeze().cpu()),
+                    global_step=iteration,
+                    dataformats="HWC",
+                )
+                logger.add_image(
+                    f"image_{i}/noise_ref",
+                    plot_tensor(noise_reference.squeeze().cpu()),
+                    global_step=iteration,
+                    dataformats="HWC",
+                )
+                
                 logger.add_image(
                     f"image_{i}/generated_enc",
                     plot_tensor(y_enc.squeeze().cpu()),
@@ -248,13 +272,15 @@ if __name__ == "__main__":
                 save_plot(attended_y_enc.squeeze().cpu(), f"{log_dir}/generated_attended_enc_{i}.png")
                 save_plot(y_dec.squeeze().cpu(), f"{log_dir}/generated_dec_{i}.png")
                 save_plot(attn.squeeze().cpu(), f"{log_dir}/alignment_{i}.png")
+                save_plot(noise_estimation.squeeze().cpu(), f"{log_dir}/noise_estimation_{i}.png")
+                save_plot(noise_reference.squeeze().cpu(), f"{log_dir}/noise_reference{i}.png")
 
         with tqdm(loader, total=len(test_dataset) // batch_size) as progress_bar:
             for batch_idx, batch in enumerate(progress_bar):
                 model.zero_grad()
                 x, x_lengths = batch["x"].to(device), batch["x_lengths"].to(device)
                 y, y_lengths = batch["y"].to(device), batch["y_lengths"].to(device)
-                dur_loss, prior_loss, diff_loss = model.compute_loss(
+                dur_loss, prior_loss, diff_loss, noise_estimation, noise_reference= model.compute_loss(
                     x, x_lengths, y, y_lengths, out_size=out_size
                 )
                 loss = sum([dur_loss, prior_loss, diff_loss])
@@ -273,7 +299,7 @@ if __name__ == "__main__":
                 if batch_idx % 5 == 0:
                     msg = f"Epoch: {epoch}, iteration: {iteration} | dur_loss: {dur_loss.item()}, prior_loss: {prior_loss.item()}, diff_loss: {diff_loss.item()}"
                     progress_bar.set_description(msg)
-
+                
         log_msg = "Epoch %d: duration loss = %.3f " % (epoch, np.mean(dur_losses))
         log_msg += "| prior loss = %.3f " % np.mean(prior_losses)
         log_msg += "| diffusion loss = %.3f\n" % np.mean(diff_losses)
