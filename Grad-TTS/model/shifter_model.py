@@ -304,7 +304,7 @@ class Shifter(nn.Module):
 
 def build_shifter(
     output_dim: int,
-    tgt_seq_len: int,
+    tgt_seq_len: int = 1000,
     d_model: int = 512,
     N: int = 2,
     h: int = 4,

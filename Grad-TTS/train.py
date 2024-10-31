@@ -60,6 +60,8 @@ if __name__ == "__main__":
     torch.manual_seed(random_seed)
     np.random.seed(random_seed)
 
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
     print('Initializing logger...')
     logger = SummaryWriter(log_dir=log_dir)
 
@@ -78,7 +80,7 @@ if __name__ == "__main__":
     print('Initializing model...')
     model = GradTTS(nsymbols, 1, None, n_enc_channels, filter_channels, filter_channels_dp, 
                     n_heads, n_enc_layers, enc_kernel, enc_dropout, window_size, 
-                    n_feats, dec_dim, beta_min, beta_max, pe_scale).cuda()
+                    n_feats, dec_dim, beta_min, beta_max, pe_scale, device).cuda()
     print('Number of encoder + duration predictor parameters: %.2fm' % (model.encoder.nparams/1e6))
     print('Number of decoder parameters: %.2fm' % (model.decoder.nparams/1e6))
     print('Total parameters: %.2fm' % (model.nparams/1e6))
