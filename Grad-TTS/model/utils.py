@@ -9,6 +9,25 @@ def sequence_mask(length, max_length=None):
     x = torch.arange(int(max_length), dtype=length.dtype, device=length.device)
     return x.unsqueeze(0) < length.unsqueeze(1) #(1, 55) (1, 1)
 
+def causal_mask(size):
+    """
+    Generates a causal mask for a sequence of a given size.
+
+    The causal mask is an upper triangular matrix with ones above the diagonal
+    and zeros on and below the diagonal. This mask is used to prevent the model
+    from attending to future tokens in a sequence.
+
+    Args:
+        size (int): The size of the sequence for which the mask is generated.
+
+    Returns:
+        torch.Tensor: A boolean tensor of shape (1, size, size) where True indicates
+                      positions that are allowed to be attended to and False indicates
+                      positions that are masked.
+    """
+    mask = torch.triu(torch.ones((1, size, size)), diagonal=1).type(torch.int)
+    return mask == 0
+
 
 def fix_len_compatibility(length, num_downsamplings_in_unet=2):
     while True:
