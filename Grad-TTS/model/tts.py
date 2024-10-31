@@ -132,13 +132,9 @@ class GradTTS(BaseModule):
             y_max_length
         )  # so that y_max_length is multiple of (4)
 
-        batch_size, last_batch_length = divmod(y_max_length, out_size)
-        if last_batch_length:
-            batch_size += 1
-
         # Using obtained durations `w` construct alignment map `attn`
         y_mask = (
-            sequence_mask(y_lengths, batch_size*out_size).unsqueeze(1).to(x_mask.dtype)
+            sequence_mask(y_lengths, y_max_length_).unsqueeze(1).to(x_mask.dtype)
         )  # (1, 1, 200)
         attn_mask = x_mask.unsqueeze(-1) * y_mask.unsqueeze(
             2
@@ -154,23 +150,18 @@ class GradTTS(BaseModule):
 
         encoder_output = m[:, :y_max_length, :] # (1, 197, 80)
 
-        decoder_inputs = torch.full((batch_size, 1, self.n_feats), -1).type(m.dtype).to(x.device) ##TODO: check mu_y.dtype
+        decoder_inputs = torch.full((1, 1, self.n_feats), -1).type(m.dtype).to(x.device) ##TODO: check mu_y.dtype
         
-        batched_encoder_outputs = segment_sequence_to_batch(m, out_size, 1).to(x.device) # (bs, multiple(out_size), 80)
-        batched_y_mask = segment_sequence_to_batch(y_mask, out_size, 2).type(torch.int).to(x.device) # (bs, 1, multiple(out_size))
-        
-        while decoder_inputs.size(1) <= out_size:
+        while decoder_inputs.size(1) <= y_max_length_:
             # build mask for target and calculate output
-            decoder_mask = torch.triu(torch.ones((batch_size, decoder_inputs.size(1), decoder_inputs.size(1))), diagonal=1).type(torch.int).to(x.device)
-            out = self.shifter.decode(batched_encoder_outputs, batched_y_mask.unsqueeze(1), decoder_inputs, decoder_mask.unsqueeze(1), None)
+            decoder_mask = torch.triu(torch.ones((1, decoder_inputs.size(1), decoder_inputs.size(1))), diagonal=1).type(torch.int).to(x.device)
+            out = self.shifter.decode(m, y_mask.unsqueeze(1), decoder_inputs, decoder_mask.unsqueeze(1), None)
 
             # project next token
             predicted_next_frame = self.shifter.project(out[:, -1])
             decoder_inputs = torch.cat([decoder_inputs, predicted_next_frame.unsqueeze(1)], dim=1)
         
-        decoder_inputs = decoder_inputs[:, 1:, :]
-        mu_y = decoder_inputs.reshape(1, batch_size*out_size, self.n_feats).transpose(1, 2)[:, :, :y_max_length_] # (1, 80, multiple(out_size))
-        y_mask = sequence_mask(y_lengths, y_max_length_).unsqueeze(1).to(x_mask.dtype) 
+        mu_y = decoder_inputs[:, 1:, :].transpose(1, 2)
         # Sample latent representation from terminal distribution N(mu_y, I)
         z = mu_y + torch.randn_like(mu_y, device=mu_y.device) / temperature
         # Generate sample by performing reverse dynamics
@@ -287,11 +278,11 @@ class GradTTS(BaseModule):
         mu_y = self.shifter.project(mu_y).transpose(1, 2) # (16, 80, 172)
 
         # Compute loss of score-based decoder
-        diff_loss, xt = self.decoder.compute_loss(y, y_mask, mu_y, spk)
+        diff_loss, xt, noise_estimation, noise_reference = self.decoder.compute_loss(y, y_mask, mu_y, spk)
 
         # Compute loss between aligned encoder outputs and mel-spectrogram
 
         prior_loss = torch.sum(0.5 * ((y - mu_y) ** 2 + math.log(2 * math.pi)) * y_mask)
         prior_loss = prior_loss / (torch.sum(y_mask) * self.n_feats)
 
-        return dur_loss, prior_loss, diff_loss
+        return dur_loss, prior_loss, diff_loss, noise_estimation, noise_reference
