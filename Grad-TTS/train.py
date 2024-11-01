@@ -74,14 +74,21 @@ if __name__ == "__main__":
     test_dataset = TextMelDataset(valid_filelist_path, cmudict_path, add_blank,
                                   n_fft, n_feats, sample_rate, hop_length,
                                   win_length, f_min, f_max)
+    
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     print('Initializing model...')
     model = GradTTS(nsymbols, 1, None, n_enc_channels, filter_channels, filter_channels_dp, 
                     n_heads, n_enc_layers, enc_kernel, enc_dropout, window_size, 
-                    n_feats, dec_dim, beta_min, beta_max, pe_scale).cuda()
+                    n_feats, dec_dim, beta_min, beta_max, pe_scale, device).cuda()
     print('Number of encoder + duration predictor parameters: %.2fm' % (model.encoder.nparams/1e6))
     print('Number of decoder parameters: %.2fm' % (model.decoder.nparams/1e6))
     print('Total parameters: %.2fm' % (model.nparams/1e6))
+
+    print("Loading and then freezing encoder and duration predictor...")
+    model.encoder.load_state_dict(torch.load('checkpts/encoder-duration-predictor.pt', map_location=lambda loc, storage: loc))
+    for param in model.encoder.parameters():
+        param.requires_grad = False
 
     print('Initializing optimizer...')
     optimizer = torch.optim.Adam(params=model.parameters(), lr=learning_rate)

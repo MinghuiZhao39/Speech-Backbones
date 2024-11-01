@@ -21,7 +21,7 @@ from model.utils import sequence_mask, generate_path, duration_loss, fix_len_com
 class GradTTS(BaseModule):
     def __init__(self, n_vocab, n_spks, spk_emb_dim, n_enc_channels, filter_channels, filter_channels_dp, 
                  n_heads, n_enc_layers, enc_kernel, enc_dropout, window_size, 
-                 n_feats, dec_dim, beta_min, beta_max, pe_scale):
+                 n_feats, dec_dim, beta_min, beta_max, pe_scale, device):
         super(GradTTS, self).__init__()
         self.n_vocab = n_vocab
         self.n_spks = n_spks
@@ -39,12 +39,14 @@ class GradTTS(BaseModule):
         self.beta_min = beta_min
         self.beta_max = beta_max
         self.pe_scale = pe_scale
+        self.device = device
 
         if n_spks > 1:
             self.spk_emb = torch.nn.Embedding(n_spks, spk_emb_dim)
         self.encoder = TextEncoder(n_vocab, n_feats, n_enc_channels, 
                                    filter_channels, filter_channels_dp, n_heads, 
                                    n_enc_layers, enc_kernel, enc_dropout, window_size)
+        self.attention = torch.nn.MultiheadAttention(embed_dim=80, num_heads=4, batch_first=True)
         self.decoder = Diffusion(n_feats, dec_dim, n_spks, spk_emb_dim, beta_min, beta_max, pe_scale)
 
     @torch.no_grad()
@@ -90,6 +92,14 @@ class GradTTS(BaseModule):
         mu_y = mu_y.transpose(1, 2) #(1, 80, 200)
         encoder_outputs = mu_y[:, :, :y_max_length] #(1, 80, 197)
 
+        # (1, 201, 80)
+        attended_mu_y = torch.empty(mu_y.size(0), mu_y.size(2)+1, mu_y.size(1))(mu_y.dtype).to(x.device) ##TODO: check mu_y.dtype
+        attended_mu_y[:, :1, :] = torch.full((1, 1, self.n_feats), -1) 
+        
+        for i in range(mu_y.size(2)):
+            attended_mu_y[:, i+1:i+2, :] = self.attention(attended_mu_y[:, i:i+1, :], mu_y, mu_y, key_padding_mask=y_mask)
+                
+        attended_mu_y = attended_mu_y[:, 1:, :].reshape(1, 2)
         # Sample latent representation from terminal distribution N(mu_y, I)
         z = mu_y + torch.randn_like(mu_y, device=mu_y.device) / temperature
         # Generate sample by performing reverse dynamics
@@ -170,13 +180,19 @@ class GradTTS(BaseModule):
 
         # Align encoded text with mel-spectrogram and get mu_y segment
         mu_y = torch.matmul(attn.squeeze(1).transpose(1, 2), mu_x.transpose(1, 2)) # (16, 172, 265), (16, 265, 80) = (16, 172, 80)
-        mu_y = mu_y.transpose(1, 2) #(16, 80, 172)
-
+        # mu_y = mu_y.transpose(1, 2) #(16, 80, 172)
+        
+        # create query
+        sos_vector = torch.full((mu_y.shape[0], 1, mu_y.shape[2]), -1).to(self.device) ##TODO: effective way to check device 
+        left_shifted_y = torch.cat((sos_vector, y.transpose(1, 2)[:, :-1, :]), 1)
+        
+        # use attention
+        attended_mu_y = self.attention(left_shifted_y, mu_y, mu_y, key_padding_mask=y_mask.squeeze(1))
         # Compute loss of score-based decoder
-        diff_loss, xt = self.decoder.compute_loss(y, y_mask, mu_y, spk)
+        diff_loss, xt = self.decoder.compute_loss(y, y_mask, attended_mu_y, spk) # (x0, attended_mu)
         
         # Compute loss between aligned encoder outputs and mel-spectrogram
-        prior_loss = torch.sum(0.5 * ((y - mu_y) ** 2 + math.log(2 * math.pi)) * y_mask)
+        prior_loss = torch.sum(0.5 * ((y - attended_mu_y) ** 2 + math.log(2 * math.pi)) * y_mask)
         prior_loss = prior_loss / (torch.sum(y_mask) * self.n_feats)
         
         return dur_loss, prior_loss, diff_loss
