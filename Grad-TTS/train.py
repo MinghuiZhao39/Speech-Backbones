@@ -108,10 +108,11 @@ if __name__ == "__main__":
                 model.zero_grad()
                 x, x_lengths = batch['x'].cuda(), batch['x_lengths'].cuda()
                 y, y_lengths = batch['y'].cuda(), batch['y_lengths'].cuda()
-                dur_loss, prior_loss = model.compute_loss(x, x_lengths,
+                dur_loss, prior_loss, diff_loss = model.compute_loss(x, x_lengths,
                                                                      y, y_lengths,
                                                                      out_size=out_size)
-                loss = sum([dur_loss, prior_loss])
+                # loss = sum([dur_loss, prior_loss, diff_loss])
+                loss = sum([prior_loss, diff_loss])
                 loss.backward()
 
                 enc_grad_norm = torch.nn.utils.clip_grad_norm_(model.encoder.parameters(),
@@ -124,8 +125,8 @@ if __name__ == "__main__":
                                   global_step=iteration)
                 logger.add_scalar('training/prior_loss', prior_loss.item(),
                                   global_step=iteration)
-                # logger.add_scalar('training/diffusion_loss', diff_loss.item(),
-                #                   global_step=iteration)
+                logger.add_scalar('training/diffusion_loss', diff_loss.item(),
+                                  global_step=iteration)
                 logger.add_scalar('training/encoder_grad_norm', enc_grad_norm,
                                   global_step=iteration)
                 logger.add_scalar('training/decoder_grad_norm', dec_grad_norm,
@@ -133,7 +134,7 @@ if __name__ == "__main__":
                 
                 dur_losses.append(dur_loss.item())
                 prior_losses.append(prior_loss.item())
-                # diff_losses.append(diff_loss.item())
+                diff_losses.append(diff_loss.item())
                 
                 if batch_idx % 5 == 0:
                     msg = f'Epoch: {epoch}, iteration: {iteration} | dur_loss: {dur_loss.item()}, prior_loss: {prior_loss.item()}'
