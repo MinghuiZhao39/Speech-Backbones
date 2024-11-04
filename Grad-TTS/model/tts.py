@@ -15,6 +15,7 @@ from model import monotonic_align
 from model.base import BaseModule
 from model.text_encoder import TextEncoder
 from model.diffusion import Diffusion
+from model.attention import Attention
 from model.utils import sequence_mask, generate_path, duration_loss, fix_len_compatibility
 from utils import plot_tensor, save_plot
 
@@ -47,7 +48,7 @@ class GradTTS(BaseModule):
         self.encoder = TextEncoder(n_vocab, n_feats, n_enc_channels, 
                                    filter_channels, filter_channels_dp, n_heads, 
                                    n_enc_layers, enc_kernel, enc_dropout, window_size)
-        self.attention = torch.nn.MultiheadAttention(embed_dim=80, num_heads=4, batch_first=True)
+        self.attention = Attention(n_feats, hidden_dim=512)
         self.decoder = Diffusion(n_feats, dec_dim, n_spks, spk_emb_dim, beta_min, beta_max, pe_scale)
 
     @torch.no_grad()
@@ -97,7 +98,7 @@ class GradTTS(BaseModule):
         attended_mu_y[:, :1, :] = torch.full((1, 1, self.n_feats), -1) 
         
         for i in range(mu_y.size(1)):
-            attended_mu_y[:, i+1:i+2, :], _ = self.attention(attended_mu_y[:, i:i+1, :], mu_y, mu_y, key_padding_mask=y_mask.squeeze(1))
+            attended_mu_y[:, i+1:i+2, :], _ = self.attention(attended_mu_y[:, i:i+1, :], mu_y, mu_y)
                 
         attended_mu_y = attended_mu_y[:, 1:, :].transpose(1, 2)
         save_plot(attended_mu_y.squeeze().cpu(), 
@@ -189,7 +190,7 @@ class GradTTS(BaseModule):
         left_shifted_y = torch.cat((sos_vector, y.transpose(1, 2)[:, :-1, :]), 1)
         
         # use attention
-        attended_mu_y, _ = self.attention(left_shifted_y, mu_y, mu_y, key_padding_mask=y_mask.squeeze(1))
+        attended_mu_y, _ = self.attention(left_shifted_y, mu_y, mu_y, y_mask.squeeze(1))
         # Compute loss of score-based decoder
         diff_loss, xt = self.decoder.compute_loss(y, y_mask, attended_mu_y.transpose(1, 2), spk) # (x0, attended_mu)
         
