@@ -21,17 +21,9 @@ class Attention(nn.Module):
         key = self.fc1(key)
         value = self.fc1(value)
         
-        # Prepare the input for the attention mechanism
-        # MultiheadAttention expects input of shape (seq_len, batch_size, hidden_dim)
-        query = query.permute(1, 0, 2)
-        key = key.permute(1, 0, 2)
-        value = value.permute(1, 0, 2)
-        
         # Apply attention
         attn_output, _ = self.attention(query, key, value, key_padding_mask=mask)
         
-        # Transform the output back to the original input dimension
-        attn_output = attn_output.permute(1, 0, 2)
         output = self.fc2(attn_output)
         
         return output

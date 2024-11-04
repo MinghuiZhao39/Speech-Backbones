@@ -98,11 +98,10 @@ class GradTTS(BaseModule):
         attended_mu_y[:, :1, :] = torch.full((1, 1, self.n_feats), -1) 
         
         for i in range(mu_y.size(1)):
-            attended_mu_y[:, i+1:i+2, :], _ = self.attention(attended_mu_y[:, i:i+1, :], mu_y, mu_y)
+            attended_mu_y[:, i+1:i+2, :] = self.attention(attended_mu_y[:, i:i+1, :], mu_y, mu_y, y_mask.squeeze(1))
                 
         attended_mu_y = attended_mu_y[:, 1:, :].transpose(1, 2)
-        save_plot(attended_mu_y.squeeze().cpu(), 
-                          f'logs/attention_m0/attended_mu_y_shishi.png')
+
         # Sample latent representation from terminal distribution N(mu_y, I)
         z = attended_mu_y + torch.randn_like(attended_mu_y, device=mu_y.device) / temperature
         # Generate sample by performing reverse dynamics
@@ -190,7 +189,7 @@ class GradTTS(BaseModule):
         left_shifted_y = torch.cat((sos_vector, y.transpose(1, 2)[:, :-1, :]), 1)
         
         # use attention
-        attended_mu_y, _ = self.attention(left_shifted_y, mu_y, mu_y, y_mask.squeeze(1))
+        attended_mu_y = self.attention(left_shifted_y, mu_y, mu_y, y_mask.squeeze(1))
         # Compute loss of score-based decoder
         diff_loss, xt = self.decoder.compute_loss(y, y_mask, attended_mu_y.transpose(1, 2), spk) # (x0, attended_mu)
         
