@@ -45,27 +45,28 @@ import torch.nn.functional as F
 
 
 class Attention(nn.Module):
-    def __init__(self, input_dim, hidden_dim=512):
+    def __init__(self, input_dim, hidden_dim=512, num_heads=8):
         super(Attention, self).__init__()
         self.input_dim = input_dim
         self.hidden_dim = hidden_dim
+        self.num_heads = num_heads
         
         # Linear layers to transform the input dimension to hidden_dim and back
         self.fc1 = nn.Linear(input_dim, hidden_dim)
         self.fc2 = nn.Linear(hidden_dim, input_dim)
         
         # Attention mechanism
-        self.self_attention = nn.MultiheadAttention(embed_dim=hidden_dim, num_heads=8, batch_first=True)
-        self.cross_attention = nn.MultiheadAttention(embed_dim=hidden_dim, num_heads=8, batch_first=True)
+        self.self_attention = nn.MultiheadAttention(embed_dim=hidden_dim, num_heads=num_heads, batch_first=True)
+        self.cross_attention = nn.MultiheadAttention(embed_dim=hidden_dim, num_heads=num_heads, batch_first=True)
         
-    def forward(self, query, key, value, mask):
+    def forward(self, query, key, value, mask, causal_mask):
         # Transform the input dimensions to hidden_dim
         query = self.fc1(query)
         key = self.fc1(key)
         value = self.fc1(value)
         
         # Apply attention
-        query = self.self_attention(query, query, query, key_padding_mask=mask, is_causal=True)[0]
+        query = self.self_attention(query, query, query, key_padding_mask=mask[:, :query.size(1)], attn_mask=causal_mask.bool().repeat(self.num_heads, 1, 1))[0]
         attn_output = self.cross_attention(query, key, value, key_padding_mask=mask)[0]
         
         output = self.fc2(attn_output)

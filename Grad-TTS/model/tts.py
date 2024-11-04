@@ -16,7 +16,7 @@ from model.base import BaseModule
 from model.text_encoder import TextEncoder
 from model.diffusion import Diffusion
 from model.attention import Attention
-from model.utils import sequence_mask, generate_path, duration_loss, fix_len_compatibility
+from model.utils import sequence_mask, generate_path, duration_loss, fix_len_compatibility, causal_mask
 from utils import plot_tensor, save_plot
 
 
@@ -98,7 +98,8 @@ class GradTTS(BaseModule):
         attended_mu_y[:, :1, :] = torch.full((1, 1, self.n_feats), -1) 
         
         for i in range(mu_y.size(1)):
-            attended_mu_y[:, i+1:i+2, :] = self.attention(attended_mu_y[:, i:i+1, :], mu_y, mu_y, y_mask.squeeze(1))
+            causal = torch.triu(torch.ones((1, i+1, i+1)), diagonal=1).type(torch.int).to(x.device)
+            attended_mu_y[:, i+1:i+2, :] = self.attention(attended_mu_y[:, :i+1, :], mu_y, mu_y, y_mask.squeeze(1), causal)[:, i:i+1, :]
                 
         attended_mu_y = attended_mu_y[:, 1:, :].transpose(1, 2)
 
@@ -188,8 +189,13 @@ class GradTTS(BaseModule):
         sos_vector = torch.full((mu_y.shape[0], 1, mu_y.shape[2]), -1).to(self.device) ##TODO: effective way to check device 
         left_shifted_y = torch.cat((sos_vector, y.transpose(1, 2)[:, :-1, :]), 1)
         
+        sos_mask = torch.full((y_mask.shape[0], y_mask.shape[1], 1), 1).to(self.device)
+        y_mask_ = torch.cat((sos_mask, y_mask[:, :, :-1]), 2)
+        
+        causal = torch.cat([y_mask[i].int() & causal_mask(out_size).to(self.device) for i in range(y_mask_.shape[0])], 0)
+        
         # use attention
-        attended_mu_y = self.attention(left_shifted_y, mu_y, mu_y, y_mask.squeeze(1))
+        attended_mu_y = self.attention(left_shifted_y, mu_y, mu_y, y_mask.squeeze(1), causal)
         # Compute loss of score-based decoder
         diff_loss, xt = self.decoder.compute_loss(y, y_mask, attended_mu_y.transpose(1, 2), spk) # (x0, attended_mu)
         
