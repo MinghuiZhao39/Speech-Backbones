@@ -116,7 +116,8 @@ if __name__ == "__main__":
                 dur_loss, prior_loss, diff_loss = model.compute_loss(x, x_lengths,
                                                                      y, y_lengths,
                                                                      out_size=out_size)
-                loss = sum([dur_loss, prior_loss, diff_loss])
+                # loss = sum([dur_loss, prior_loss, diff_loss])
+                loss = sum([prior_loss, diff_loss])
                 loss.backward()
 
                 enc_grad_norm = torch.nn.utils.clip_grad_norm_(model.encoder.parameters(),
@@ -161,7 +162,7 @@ if __name__ == "__main__":
             for i, item in enumerate(test_batch):
                 x = item['x'].to(torch.long).unsqueeze(0).cuda()
                 x_lengths = torch.LongTensor([x.shape[-1]]).cuda()
-                y_enc, y_dec, attn = model(x, x_lengths, n_timesteps=50)
+                y_enc, y_dec, attn, attended_mu_y = model(x, x_lengths, n_timesteps=50)
                 logger.add_image(f'image_{i}/generated_enc',
                                  plot_tensor(y_enc.squeeze().cpu()),
                                  global_step=iteration, dataformats='HWC')
@@ -171,12 +172,17 @@ if __name__ == "__main__":
                 logger.add_image(f'image_{i}/alignment',
                                  plot_tensor(attn.squeeze().cpu()),
                                  global_step=iteration, dataformats='HWC')
+                logger.add_image(f'image_{i}/attended_mu_y',
+                                 plot_tensor(attended_mu_y.squeeze().cpu()),
+                                 global_step=iteration, dataformats='HWC')
                 save_plot(y_enc.squeeze().cpu(), 
                           f'{log_dir}/generated_enc_{i}.png')
                 save_plot(y_dec.squeeze().cpu(), 
                           f'{log_dir}/generated_dec_{i}.png')
                 save_plot(attn.squeeze().cpu(), 
                           f'{log_dir}/alignment_{i}.png')
+                save_plot(attended_mu_y.squeeze().cpu(), 
+                          f'{log_dir}/attended_mu_y_{i}.png')
 
         ckpt = model.state_dict()
         torch.save(ckpt, f=f"{log_dir}/grad_{epoch}.pt")

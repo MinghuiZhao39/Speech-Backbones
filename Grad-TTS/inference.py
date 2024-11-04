@@ -19,6 +19,7 @@ from model import GradTTS
 from text import text_to_sequence, cmudict
 from text.symbols import symbols
 from utils import intersperse
+from utils import plot_tensor, save_plot
 
 import sys
 sys.path.append('./hifi-gan/')
@@ -28,6 +29,7 @@ from models import Generator as HiFiGAN
 
 HIFIGAN_CONFIG = './checkpts/hifigan-config.json'
 HIFIGAN_CHECKPT = './checkpts/hifigan.pt'
+log_dir = 'logs/attention_m0'
 
 
 if __name__ == '__main__':
@@ -45,12 +47,14 @@ if __name__ == '__main__':
     else:
         spk = None
     
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
     print('Initializing Grad-TTS...')
     generator = GradTTS(len(symbols)+1, params.n_spks, params.spk_emb_dim,
                         params.n_enc_channels, params.filter_channels,
                         params.filter_channels_dp, params.n_heads, params.n_enc_layers,
                         params.enc_kernel, params.enc_dropout, params.window_size,
-                        params.n_feats, params.dec_dim, params.beta_min, params.beta_max, params.pe_scale)
+                        params.n_feats, params.dec_dim, params.beta_min, params.beta_max, params.pe_scale, device)
     generator.load_state_dict(torch.load(args.checkpoint, map_location=lambda loc, storage: loc))
     _ = generator.cuda().eval()
     # _ = generator.eval()
@@ -78,13 +82,21 @@ if __name__ == '__main__':
             # x_lengths = torch.LongTensor([x.shape[-1]])
             
             t = dt.datetime.now()
-            y_enc, y_dec, attn = generator.forward(x, x_lengths, n_timesteps=args.timesteps, temperature=1.5,
+            y_enc, y_dec, attn, attended_mu_y = generator.forward(x, x_lengths, n_timesteps=args.timesteps, temperature=1.5,
                                                    stoc=False, spk=spk, length_scale=0.91)
             t = (dt.datetime.now() - t).total_seconds()
             print(f'Grad-TTS RTF: {t * 22050 / (y_dec.shape[-1] * 256)}')
 
             audio = (vocoder.forward(y_dec).cpu().squeeze().clamp(-1, 1).numpy() * 32768).astype(np.int16)
             
-            write(f'./out/original_{i}.wav', 22050, audio)
+            write(f'./out/attention_m0_{i}.wav', 22050, audio)
+            save_plot(y_enc.squeeze().cpu(), 
+                          f'{log_dir}/generated_enc_{i}.png')
+            save_plot(y_dec.squeeze().cpu(), 
+                          f'{log_dir}/generated_dec_{i}.png')
+            save_plot(attn.squeeze().cpu(), 
+                          f'{log_dir}/alignment_{i}.png')
+            save_plot(attended_mu_y.squeeze().cpu(), 
+                          f'{log_dir}/attended_mu_y_{i}.png')
 
     print('Done. Check out `out` folder for samples.')

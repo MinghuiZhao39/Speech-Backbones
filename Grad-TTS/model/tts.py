@@ -16,6 +16,7 @@ from model.base import BaseModule
 from model.text_encoder import TextEncoder
 from model.diffusion import Diffusion
 from model.utils import sequence_mask, generate_path, duration_loss, fix_len_compatibility
+from utils import plot_tensor, save_plot
 
 
 class GradTTS(BaseModule):
@@ -89,24 +90,25 @@ class GradTTS(BaseModule):
 
         # Align encoded text and get mu_y
         mu_y = torch.matmul(attn.squeeze(1).transpose(1, 2), mu_x.transpose(1, 2)) #(1, 200, 55) (1, 55, 80) align \tilde{\mu} to \mu 
-        mu_y = mu_y.transpose(1, 2) #(1, 80, 200)
-        encoder_outputs = mu_y[:, :, :y_max_length] #(1, 80, 197)
+        encoder_outputs = mu_y.transpose(1, 2)[:, :, :y_max_length] #(1, 80, 197)
 
         # (1, 201, 80)
-        attended_mu_y = torch.empty(mu_y.size(0), mu_y.size(2)+1, mu_y.size(1))(mu_y.dtype).to(x.device) ##TODO: check mu_y.dtype
+        attended_mu_y = torch.empty(mu_y.size(0), mu_y.size(1)+1, mu_y.size(2)).type(mu_y.dtype).to(x.device) ##TODO: check mu_y.dtype
         attended_mu_y[:, :1, :] = torch.full((1, 1, self.n_feats), -1) 
         
-        for i in range(mu_y.size(2)):
-            attended_mu_y[:, i+1:i+2, :] = self.attention(attended_mu_y[:, i:i+1, :], mu_y, mu_y, key_padding_mask=y_mask)
+        for i in range(mu_y.size(1)):
+            attended_mu_y[:, i+1:i+2, :], _ = self.attention(attended_mu_y[:, i:i+1, :], mu_y, mu_y, key_padding_mask=y_mask.squeeze(1))
                 
-        attended_mu_y = attended_mu_y[:, 1:, :].reshape(1, 2)
+        attended_mu_y = attended_mu_y[:, 1:, :].transpose(1, 2)
+        save_plot(attended_mu_y.squeeze().cpu(), 
+                          f'logs/attention_m0/attended_mu_y_shishi.png')
         # Sample latent representation from terminal distribution N(mu_y, I)
-        z = mu_y + torch.randn_like(mu_y, device=mu_y.device) / temperature
+        z = attended_mu_y + torch.randn_like(attended_mu_y, device=mu_y.device) / temperature
         # Generate sample by performing reverse dynamics
-        decoder_outputs = self.decoder(z, y_mask, mu_y, n_timesteps, stoc, spk) #(1, 80, 200)
+        decoder_outputs = self.decoder(z, y_mask, attended_mu_y, n_timesteps, stoc, spk) #(1, 80, 200)
         decoder_outputs = decoder_outputs[:, :, :y_max_length]
 
-        return encoder_outputs, decoder_outputs, attn[:, :, :y_max_length]
+        return encoder_outputs, decoder_outputs, attn[:, :, :y_max_length], attended_mu_y
 
     def compute_loss(self, x, x_lengths, y, y_lengths, spk=None, out_size=None):
         """
@@ -187,12 +189,12 @@ class GradTTS(BaseModule):
         left_shifted_y = torch.cat((sos_vector, y.transpose(1, 2)[:, :-1, :]), 1)
         
         # use attention
-        attended_mu_y = self.attention(left_shifted_y, mu_y, mu_y, key_padding_mask=y_mask.squeeze(1))
+        attended_mu_y, _ = self.attention(left_shifted_y, mu_y, mu_y, key_padding_mask=y_mask.squeeze(1))
         # Compute loss of score-based decoder
-        diff_loss, xt = self.decoder.compute_loss(y, y_mask, attended_mu_y, spk) # (x0, attended_mu)
+        diff_loss, xt = self.decoder.compute_loss(y, y_mask, attended_mu_y.transpose(1, 2), spk) # (x0, attended_mu)
         
         # Compute loss between aligned encoder outputs and mel-spectrogram
-        prior_loss = torch.sum(0.5 * ((y - attended_mu_y) ** 2 + math.log(2 * math.pi)) * y_mask)
+        prior_loss = torch.sum(0.5 * ((y - attended_mu_y.transpose(1, 2)) ** 2 + math.log(2 * math.pi)) * y_mask)
         prior_loss = prior_loss / (torch.sum(y_mask) * self.n_feats)
         
         return dur_loss, prior_loss, diff_loss
