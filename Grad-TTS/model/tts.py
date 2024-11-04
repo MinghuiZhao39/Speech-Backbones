@@ -114,7 +114,7 @@ class GradTTS(BaseModule):
         decoder_outputs = self.decoder(z, y_mask, mu_y, n_timesteps, stoc, spk) #(1, 80, 200)
         decoder_outputs = decoder_outputs[:, :, :y_max_length]
 
-        return encoder_outputs.transpose(1, 2), decoder_outputs, attn[:, :, :y_max_length]
+        return encoder_outputs.transpose(1, 2), decoder_outputs, attn[:, :, :y_max_length],  mu_y[:, :, :y_max_length]
         # return encoder_outputs.transpose(1, 2), mu_y[:, :, :y_max_length], attn[:, :, :y_max_length]
 
     def compute_loss(self, x, x_lengths, y, y_lengths, spk=None, out_size=None):

@@ -85,6 +85,11 @@ if __name__ == "__main__":
     print('Number of decoder parameters: %.2fm' % (model.decoder.nparams/1e6))
     print('Total parameters: %.2fm' % (model.nparams/1e6))
 
+    print("Freezing encoder and duration predictor...")
+    model.encoder.load_state_dict(torch.load('checkpts/encoder-duration-predictor.pt', map_location=lambda loc, storage: loc))
+    for param in model.encoder.parameters():
+        param.requires_grad = False
+
     print('Initializing optimizer...')
     optimizer = torch.optim.Adam(params=model.parameters(), lr=learning_rate)
 
@@ -157,7 +162,7 @@ if __name__ == "__main__":
             for i, item in enumerate(test_batch):
                 x = item['x'].to(torch.long).unsqueeze(0).cuda()
                 x_lengths = torch.LongTensor([x.shape[-1]]).cuda()
-                y_enc, y_dec, attn = model(x, x_lengths, n_timesteps=50)
+                y_enc, y_dec, attn, attended_mu_y = model(x, x_lengths, n_timesteps=50)
                 logger.add_image(f'image_{i}/generated_enc',
                                  plot_tensor(y_enc.squeeze().cpu()),
                                  global_step=iteration, dataformats='HWC')
@@ -167,12 +172,17 @@ if __name__ == "__main__":
                 logger.add_image(f'image_{i}/alignment',
                                  plot_tensor(attn.squeeze().cpu()),
                                  global_step=iteration, dataformats='HWC')
+                logger.add_image(f'image_{i}/attended_mu_y',
+                                 plot_tensor(attended_mu_y.squeeze().cpu()),
+                                 global_step=iteration, dataformats='HWC')
                 save_plot(y_enc.squeeze().cpu(), 
                           f'{log_dir}/generated_enc_{i}.png')
                 save_plot(y_dec.squeeze().cpu(), 
                           f'{log_dir}/generated_dec_{i}.png')
                 save_plot(attn.squeeze().cpu(), 
                           f'{log_dir}/alignment_{i}.png')
+                save_plot(attended_mu_y.squeeze().cpu(), 
+                          f'{log_dir}/attended_mu_y{i}.png')
 
         ckpt = model.state_dict()
         torch.save(ckpt, f=f"{log_dir}/grad_{epoch}.pt")
