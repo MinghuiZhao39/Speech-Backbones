@@ -99,7 +99,8 @@ class GradTTS(BaseModule):
         
         while decoder_inputs.size(1) <= y_max_length_:
             # build mask for target and calculate output
-            decoder_mask = torch.triu(torch.ones((1, decoder_inputs.size(1), decoder_inputs.size(1))), diagonal=1).type(torch.int).to(x.device)
+            # decoder_mask = torch.triu(torch.ones((1, decoder_inputs.size(1), decoder_inputs.size(1))), diagonal=1).type(torch.int).to(x.device)
+            decoder_mask = causal_mask(decoder_inputs.size(1)).to(x.device)
             out = self.shifter.decode(m, y_mask.unsqueeze(1), decoder_inputs, decoder_mask.unsqueeze(1), None)
 
             # project next token

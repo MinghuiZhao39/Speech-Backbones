@@ -87,6 +87,7 @@ if __name__ == "__main__":
 
     print("Freezing encoder and duration predictor...")
     model.encoder.load_state_dict(torch.load('checkpts/encoder-duration-predictor.pt', map_location=lambda loc, storage: loc))
+    # model.load_state_dict(torch.load('/exp/exp5/acq23mz/logs/re-diff2/grad_5.pt', map_location=lambda loc, storage: loc))
     for param in model.encoder.parameters():
         param.requires_grad = False
 
@@ -162,6 +163,10 @@ if __name__ == "__main__":
             for i, item in enumerate(test_batch):
                 x = item['x'].to(torch.long).unsqueeze(0).cuda()
                 x_lengths = torch.LongTensor([x.shape[-1]]).cuda()
+                # x = item['x'].unsqueeze(0).cuda()
+                # x_lengths = torch.LongTensor([x.shape[-1]]).cuda()
+                # y = item['y'].unsqueeze(0).cuda()
+                # y_lengths = torch.LongTensor([y.shape[-1]]).cuda()
                 y_enc, y_dec, attn, attended_mu_y = model(x, x_lengths, n_timesteps=50)
                 logger.add_image(f'image_{i}/generated_enc',
                                  plot_tensor(y_enc.squeeze().cpu()),
