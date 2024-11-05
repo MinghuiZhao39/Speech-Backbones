@@ -47,6 +47,7 @@ log_dir = '/exp/exp5/acq23mz/logs/re-diff2'
 test_size = 4
 n_epochs = 10000
 batch_size = 16
+batch_size = 1
 learning_rate = 1e-4
 seed = 37
 save_every = 1 

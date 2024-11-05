@@ -86,8 +86,8 @@ if __name__ == "__main__":
     print('Total parameters: %.2fm' % (model.nparams/1e6))
 
     print("Freezing encoder and duration predictor...")
-    model.encoder.load_state_dict(torch.load('checkpts/encoder-duration-predictor.pt', map_location=lambda loc, storage: loc))
-    # model.load_state_dict(torch.load('/exp/exp5/acq23mz/logs/re-diff2/grad_5.pt', map_location=lambda loc, storage: loc))
+    # model.encoder.load_state_dict(torch.load('checkpts/encoder-duration-predictor.pt', map_location=lambda loc, storage: loc))
+    model.load_state_dict(torch.load('/exp/exp5/acq23mz/logs/re-diff2/grad_198.pt', map_location=lambda loc, storage: loc))
     for param in model.encoder.parameters():
         param.requires_grad = False
 
@@ -105,7 +105,8 @@ if __name__ == "__main__":
     print('Start training...')
     iteration = 0
     for epoch in range(1, n_epochs + 1):
-        model.train()
+        # model.train()
+        model.eval()
         dur_losses = []
         prior_losses = []
         diff_losses = []
@@ -114,18 +115,20 @@ if __name__ == "__main__":
                 model.zero_grad()
                 x, x_lengths = batch['x'].cuda(), batch['x_lengths'].cuda()
                 y, y_lengths = batch['y'].cuda(), batch['y_lengths'].cuda()
-                dur_loss, prior_loss, diff_loss = model.compute_loss(x, x_lengths,
+                dur_loss, prior_loss, diff_loss, noise_est, noise_ref, mask = model.compute_loss(x, x_lengths,
                                                                      y, y_lengths,
                                                                      out_size=out_size)
+                loss = torch.sum((noise_est + noise_ref)**2) / (torch.sum(mask)*80)
+                print("diff loss: {}".format(loss))
                 # loss = sum([dur_loss, prior_loss, diff_loss])
                 loss = sum([prior_loss, diff_loss])
-                loss.backward()
+                # loss.backward()
 
                 enc_grad_norm = torch.nn.utils.clip_grad_norm_(model.encoder.parameters(),
                                                                max_norm=1)
                 dec_grad_norm = torch.nn.utils.clip_grad_norm_(model.decoder.parameters(),
                                                                max_norm=1)
-                optimizer.step()
+                # optimizer.step()
 
                 logger.add_scalar('training/duration_loss', dur_loss.item(),
                                   global_step=iteration)
@@ -147,6 +150,7 @@ if __name__ == "__main__":
                     progress_bar.set_description(msg)
                 
                 iteration += 1
+                break
 
         log_msg = 'Epoch %d: duration loss = %.3f ' % (epoch, np.mean(dur_losses))
         log_msg += '| prior loss = %.3f ' % np.mean(prior_losses)
@@ -157,37 +161,37 @@ if __name__ == "__main__":
         if epoch % params.save_every > 0:
             continue
 
-        model.eval()
-        print('Synthesis...')
-        with torch.no_grad():
-            for i, item in enumerate(test_batch):
-                x = item['x'].to(torch.long).unsqueeze(0).cuda()
-                x_lengths = torch.LongTensor([x.shape[-1]]).cuda()
-                # x = item['x'].unsqueeze(0).cuda()
-                # x_lengths = torch.LongTensor([x.shape[-1]]).cuda()
-                # y = item['y'].unsqueeze(0).cuda()
-                # y_lengths = torch.LongTensor([y.shape[-1]]).cuda()
-                y_enc, y_dec, attn, attended_mu_y = model(x, x_lengths, n_timesteps=50)
-                logger.add_image(f'image_{i}/generated_enc',
-                                 plot_tensor(y_enc.squeeze().cpu()),
-                                 global_step=iteration, dataformats='HWC')
-                logger.add_image(f'image_{i}/generated_dec',
-                                 plot_tensor(y_dec.squeeze().cpu()),
-                                 global_step=iteration, dataformats='HWC')
-                logger.add_image(f'image_{i}/alignment',
-                                 plot_tensor(attn.squeeze().cpu()),
-                                 global_step=iteration, dataformats='HWC')
-                logger.add_image(f'image_{i}/attended_mu_y',
-                                 plot_tensor(attended_mu_y.squeeze().cpu()),
-                                 global_step=iteration, dataformats='HWC')
-                save_plot(y_enc.squeeze().cpu(), 
-                          f'{log_dir}/generated_enc_{i}.png')
-                save_plot(y_dec.squeeze().cpu(), 
-                          f'{log_dir}/generated_dec_{i}.png')
-                save_plot(attn.squeeze().cpu(), 
-                          f'{log_dir}/alignment_{i}.png')
-                save_plot(attended_mu_y.squeeze().cpu(), 
-                          f'{log_dir}/attended_mu_y{i}.png')
+        # model.eval()
+        # print('Synthesis...')
+        # with torch.no_grad():
+        #     for i, item in enumerate(test_batch):
+        #         x = item['x'].to(torch.long).unsqueeze(0).cuda()
+        #         x_lengths = torch.LongTensor([x.shape[-1]]).cuda()
+        #         # x = item['x'].unsqueeze(0).cuda()
+        #         # x_lengths = torch.LongTensor([x.shape[-1]]).cuda()
+        #         # y = item['y'].unsqueeze(0).cuda()
+        #         # y_lengths = torch.LongTensor([y.shape[-1]]).cuda()
+        #         y_enc, y_dec, attn, attended_mu_y = model(x, x_lengths, n_timesteps=50)
+        #         logger.add_image(f'image_{i}/generated_enc',
+        #                          plot_tensor(y_enc.squeeze().cpu()),
+        #                          global_step=iteration, dataformats='HWC')
+        #         logger.add_image(f'image_{i}/generated_dec',
+        #                          plot_tensor(y_dec.squeeze().cpu()),
+        #                          global_step=iteration, dataformats='HWC')
+        #         logger.add_image(f'image_{i}/alignment',
+        #                          plot_tensor(attn.squeeze().cpu()),
+        #                          global_step=iteration, dataformats='HWC')
+        #         logger.add_image(f'image_{i}/attended_mu_y',
+        #                          plot_tensor(attended_mu_y.squeeze().cpu()),
+        #                          global_step=iteration, dataformats='HWC')
+        #         save_plot(y_enc.squeeze().cpu(), 
+        #                   f'{log_dir}/generated_enc_{i}.png')
+        #         save_plot(y_dec.squeeze().cpu(), 
+        #                   f'{log_dir}/generated_dec_{i}.png')
+        #         save_plot(attn.squeeze().cpu(), 
+        #                   f'{log_dir}/alignment_{i}.png')
+        #         save_plot(attended_mu_y.squeeze().cpu(), 
+        #                   f'{log_dir}/attended_mu_y{i}.png')
 
-        ckpt = model.state_dict()
-        torch.save(ckpt, f=f"{log_dir}/grad_{epoch}.pt")
+        # ckpt = model.state_dict()
+        # torch.save(ckpt, f=f"{log_dir}/grad_{epoch}.pt")

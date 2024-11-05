@@ -203,10 +203,10 @@ class GradTTS(BaseModule):
         mu_y = self.shifter.project(mu_y).transpose(1, 2) # (16, 80, 172)
 
         # Compute loss of score-based decoder
-        diff_loss, xt = self.decoder.compute_loss(y, y_mask, mu_y, spk)
+        diff_loss, xt, noise_estimation, noise_ref = self.decoder.compute_loss(y, y_mask, mu_y, spk)
         
         # Compute loss between aligned encoder outputs and mel-spectrogram
         prior_loss = torch.sum(0.5 * ((y - mu_y) ** 2 + math.log(2 * math.pi)) * y_mask)
         prior_loss = prior_loss / (torch.sum(y_mask) * self.n_feats)
         
-        return dur_loss, prior_loss, diff_loss
+        return dur_loss, prior_loss, diff_loss, noise_estimation, noise_ref, y_mask
