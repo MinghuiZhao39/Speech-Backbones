@@ -184,6 +184,9 @@ if __name__ == "__main__":
                 save_plot(attended_mu_y.squeeze().cpu(), 
                           f'{log_dir}/attended_mu_y_{i}.png')
         
+        dur_losses_ = []
+        prior_losses_ = []
+        diff_losses_ = []
         with tqdm(loader, total=len(test_dataset) // batch_size) as progress_bar:
             for batch_idx, batch in enumerate(progress_bar):
                 model.zero_grad()
@@ -200,17 +203,17 @@ if __name__ == "__main__":
                     model.decoder.parameters(), max_norm=1
                 )
 
-                dur_losses.append(dur_loss.item())
-                prior_losses.append(prior_loss.item())
-                diff_losses.append(diff_loss.item())
+                dur_losses_.append(dur_loss.item())
+                prior_losses_.append(prior_loss.item())
+                diff_losses_.append(diff_loss.item())
 
                 if batch_idx % 5 == 0:
                     msg = f"Epoch: {epoch}, iteration: {iteration} | dur_loss: {dur_loss.item()}, prior_loss: {prior_loss.item()}, diff_loss: {diff_loss.item()}"
                     progress_bar.set_description(msg)
                 
-        log_msg = "Epoch %d: duration loss = %.3f " % (epoch, np.mean(dur_losses))
-        log_msg += "| prior loss = %.3f " % np.mean(prior_losses)
-        log_msg += "| diffusion loss = %.3f\n" % np.mean(diff_losses)
+        log_msg = "Epoch %d: duration loss = %.3f " % (epoch, np.mean(dur_losses_))
+        log_msg += "| prior loss = %.3f " % np.mean(prior_losses_)
+        log_msg += "| diffusion loss = %.3f\n" % np.mean(diff_losses_)
         with open(f"{log_dir}/train_valid.log", "a") as f:
             f.write(log_msg)
 
