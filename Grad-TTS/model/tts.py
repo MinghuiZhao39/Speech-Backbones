@@ -96,10 +96,12 @@ class GradTTS(BaseModule):
         # (1, 201, 80)
         attended_mu_y = torch.empty(mu_y.size(0), mu_y.size(1)+1, mu_y.size(2)).type(mu_y.dtype).to(x.device) ##TODO: check mu_y.dtype
         attended_mu_y[:, :1, :] = torch.full((1, 1, self.n_feats), -1) 
+
+        key_padding_mask = (y_mask.squeeze(1)==0)
         
         for i in range(mu_y.size(1)):
-            causal = torch.triu(torch.ones((1, i+1, i+1)), diagonal=1).type(torch.int).to(x.device)
-            attended_mu_y[:, i+1:i+2, :] = self.attention(attended_mu_y[:, :i+1, :], mu_y, mu_y, y_mask.squeeze(1), causal)[:, i:i+1, :]
+            causal = (torch.triu(torch.ones((1, i+1, i+1)), diagonal=1).type(torch.int)==1).to(x.device)
+            attended_mu_y[:, i+1:i+2, :] = self.attention(attended_mu_y[:, :i+1, :], mu_y, mu_y, key_padding_mask, causal)[:, i:i+1, :]
                 
         attended_mu_y = attended_mu_y[:, 1:, :].transpose(1, 2)
 
@@ -194,8 +196,10 @@ class GradTTS(BaseModule):
         
         causal = torch.cat([y_mask[i].int() & causal_mask(out_size).to(self.device) for i in range(y_mask_.shape[0])], 0)
         
+        key_padding_mask = (y_mask.squeeze(1)==0)
+        causal = (causal==0)
         # use attention
-        attended_mu_y = self.attention(left_shifted_y, mu_y, mu_y, y_mask.squeeze(1), causal)
+        attended_mu_y = self.attention(left_shifted_y, mu_y, mu_y, key_padding_mask, causal)
         # Compute loss of score-based decoder
         diff_loss, xt = self.decoder.compute_loss(y, y_mask, attended_mu_y.transpose(1, 2), spk) # (x0, attended_mu)
         
