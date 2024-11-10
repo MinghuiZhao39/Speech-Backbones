@@ -48,6 +48,7 @@ class GradTTS(BaseModule):
                                    filter_channels, filter_channels_dp, n_heads, 
                                    n_enc_layers, enc_kernel, enc_dropout, window_size)
         self.decoder = Diffusion(n_feats, dec_dim, n_spks, spk_emb_dim, beta_min, beta_max, pe_scale)
+        self.attention_align = None
         self.shifter = build_shifter(n_feats)
 
     @torch.no_grad()
@@ -77,25 +78,21 @@ class GradTTS(BaseModule):
         # Get encoder_outputs `mu_x` and log-scaled token durations `logw`
         mu_x, logw, x_mask = self.encoder(x, x_lengths, spk)
 
-        w = torch.exp(logw) * x_mask
-        w_ceil = torch.ceil(w) * length_scale #(1, 1, 55)
-        y_lengths = torch.clamp_min(torch.sum(w_ceil, [1, 2]), 1).long()
+        # multihead attention and encoder
+        mu_y, y_lengths = self.attention_align(mu_x)
+
         y_max_length = int(y_lengths.max())
         y_max_length_ = fix_len_compatibility(y_max_length) # so that y_max_length is multiple of (4)
 
         # Using obtained durations `w` construct alignment map `attn`
         y_mask = sequence_mask(y_lengths, y_max_length_).unsqueeze(1).to(x_mask.dtype) #(1, 1, 200)
-        attn_mask = x_mask.unsqueeze(-1) * y_mask.unsqueeze(2) #(1, 1, 55, 1) * (1, 1, 1, 200) = (1, 1, 55, 200)
-        attn = generate_path(w_ceil.squeeze(1), attn_mask.squeeze(1)).unsqueeze(1) # (1, 1, 55, 200)
-
-        # Align encoded text and get mu_y
         m = torch.matmul(
             attn.squeeze(1).transpose(1, 2), mu_x.transpose(1, 2)
         )  # (1, 200, 55) (1, 55, 80) align \tilde{\mu} to \mu
 
-        encoder_outputs = m[:, :y_max_length, :] # (1, 197, 80)
+        encoder_outputs = mu_y[:, :y_max_length, :] # (1, 197, 80)
 
-        decoder_inputs = torch.full((1, 1, self.n_feats), -1).type(m.dtype).to(x.device) ##TODO: check mu_y.dtype
+        decoder_inputs = torch.full((1, 1, self.n_feats), -1).type(mu_y.dtype).to(x.device) ##TODO: check mu_y.dtype
         
         while decoder_inputs.size(1) <= y_max_length_:
             # build mask for target and calculate output
