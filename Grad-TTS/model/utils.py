@@ -28,6 +28,15 @@ def causal_mask(size):
     mask = torch.triu(torch.ones((1, size, size)), diagonal=1).type(torch.int)
     return mask == 0
 
+def create_eos_labels(tensor, lengths):
+    batch_size, _, seq_len = tensor.shape
+    mask = torch.zeros(batch_size, seq_len, dtype=torch.float32)
+    
+    for i in range(batch_size):
+        mask[i, lengths[i]-1] = 1.0
+    
+    return mask
+
 
 def fix_len_compatibility(length, num_downsamplings_in_unet=2):
     while True:

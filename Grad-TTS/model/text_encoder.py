@@ -307,8 +307,6 @@ class TextEncoder(BaseModule):
                                kernel_size, p_dropout, window_size=window_size)
 
         self.proj_m = torch.nn.Conv1d(n_channels + (spk_emb_dim if n_spks > 1 else 0), n_feats, 1) # linear layer
-        self.proj_w = DurationPredictor(n_channels + (spk_emb_dim if n_spks > 1 else 0), filter_channels_dp, 
-                                        kernel_size, p_dropout)
 
     def forward(self, x, x_lengths, spk=None):
         x = self.emb(x) * math.sqrt(self.n_channels) #(1, 55, 192)
@@ -319,9 +317,6 @@ class TextEncoder(BaseModule):
         if self.n_spks > 1:
             x = torch.cat([x, spk.unsqueeze(-1).repeat(1, 1, x.shape[-1])], dim=1)
         x = self.encoder(x, x_mask) #(1, 192, 55)
-        mu = self.proj_m(x) * x_mask #(1, 80, 55)
+        mu = self.proj_m(x) * x_mask #(1, 80, 55) ##TODO: might wanna keep the dimensionality
 
-        x_dp = torch.detach(x)
-        logw = self.proj_w(x_dp, x_mask) # (1, 1, 55)
-
-        return mu, logw, x_mask
+        return mu, x_mask

@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import math
+from model.utils import causal_mask
 
 
 class LayerNormalization(nn.Module):
@@ -300,20 +301,112 @@ class Shifter(nn.Module):
             return self.mel_projection_layer(x)
         else:
             return self.mel_projection_layer(x), self.eos_projection_layer(x)
-    
 
-def build_shifter(
+
+
+class Attention_aligner(nn.Module):
+    def __init__(
+        self,
+        decoder: Decoder,
+        tgt_pos: PositionalEncoding,
+        encoder_output_projection_layer: ProjectionLayer,
+        decoder_input_projection_layer: ProjectionLayer,
+        mel_projection_layer: ProjectionLayer,
+        eos_projection_layer: ProjectionLayer,
+    ) -> None:
+        super().__init__()
+        self.decoder = decoder
+        self.tgt_pos = tgt_pos
+        self.encoder_output_projection_layer = encoder_output_projection_layer
+        self.decoder_input_projection_layer =  decoder_input_projection_layer
+        self.mel_projection_layer = mel_projection_layer
+        self.eos_projection_layer = eos_projection_layer
+        self.eos = {0:"not_eos", 1:"eos"}
+
+    def decode(
+        self,
+        encoder_output: torch.Tensor,
+        src_mask: torch.Tensor,
+        tgt: torch.Tensor,
+        tgt_mask: torch.Tensor,
+        segment_index: torch.Tensor,
+    ):
+        '''
+        encoder_out: (bs, seq_len, n_feats)
+        src_mask: (bs, 1, 1, seq_len)
+        tgt: (bs, seq_len, d_model)
+        tgt_mask: (bs, 1, seq_len, seq_len)
+        ''' 
+        if self.tgt_pos:
+            tgt = self.tgt_pos(tgt, segment_index[0], segment_index[1])
+        
+        # project the latent space of text representation to the model space 80 -> 512
+        tgt = self.decoder_input_projection_layer(tgt)
+        encoder_output = self.encoder_output_projection_layer(encoder_output)
+            
+        return self.decoder(tgt, encoder_output, src_mask, tgt_mask)
+
+    def predict_eos(self, x):
+        out = self.eos_projection_layer(x)
+        out = torch.sigmoid(out)
+        return out.squeeze()
+
+    
+    def forward(self, mu_x, src_mask):
+        decoder_inputs = torch.full((1, 1, self.n_feats), -1).type(mu_x.dtype)
+        
+        while True:
+            decoder_mask = causal_mask(decoder_inputs.size(1))
+            out = self.decode(mu_x, src_mask.unsqueeze(1), decoder_inputs, decoder_mask.unsqueeze(1), None)
+            
+            predicted_next_frame = self.mel_projection_layer(out[:, -1])
+            decoder_inputs = torch.cat([decoder_inputs, predicted_next_frame.unsqueeze(1)], dim=1)
+
+            eos_classfication = self.eos_projection_layer(out[:, -1])
+            if self.predict_eos(eos_classfication) > 0.5:
+                break
+        
+        return decoder_inputs[:, 1:, :].transpose(1, 2)
+    
+    def compute_encoder_output_n_eos_loss(
+        self,
+        encoder_output: torch.Tensor,
+        src_mask: torch.Tensor,
+        tgt: torch.Tensor,
+        tgt_mask: torch.Tensor,
+        y_mask: torch.Tensor,
+        labels,
+        epsilon = 1e-10,
+        ):
+        # making the prediction 
+        output = self.decode(encoder_output, src_mask, tgt, tgt_mask, None)
+        decoder_output = self.mel_projection_layer(output)
+        
+        predictions = self.predict_eos(output) # (bs, seq_len)
+
+        outputs = torch.clamp(predictions, epsilon)
+    
+        # Calculate binary cross-entropy loss for each element
+        bce = -(labels * torch.log(outputs) + (1 - labels) * torch.log(1 - outputs))
+        
+        # Apply the mask to ignore padded positions
+        bce = bce * y_mask
+        
+        # Calculate the mean loss over valid positions
+        loss = bce.sum() / y_mask.sum()
+        return decoder_output, loss
+
+
+def build_attention_aligner(
     output_dim: int,
     tgt_seq_len: int = 1000,
     d_model: int = 512,
-    N: int = 2,
+    N: int = 1,
     h: int = 4,
     dropout: float = 0.1,
     d_ff: int = 2048,
-    predict_eos: bool = False,
     encodes_position: bool = False,
 ) -> Shifter:
-    # Create the embedding layers
 
     # Create the positional encoding layers
     tgt_pos = PositionalEncoding(d_model, tgt_seq_len, dropout) if encodes_position else None
@@ -341,16 +434,14 @@ def build_shifter(
     encoder_output_projection_layer = ProjectionLayer(output_dim, d_model)
     mel_projection_layer = ProjectionLayer(d_model, output_dim)
     
-    eos_projection_layer = None
-    if predict_eos:
-        eos_projection_layer = ProjectionLayer(d_model, output_dim)
+    eos_projection_layer = ProjectionLayer(d_model, 1)
 
     # Create the transformer
-    shifter = Shifter(decoder, tgt_pos, encoder_output_projection_layer, decoder_input_projection_layer, mel_projection_layer, eos_projection_layer)
+    attention_aligner = Attention_aligner(decoder, tgt_pos, encoder_output_projection_layer, decoder_input_projection_layer, mel_projection_layer, eos_projection_layer)
 
     # Initialize the parameters
-    for p in shifter.parameters():
+    for p in attention_aligner.parameters():
         if p.dim() > 1:
             nn.init.xavier_uniform_(p)
 
-    return shifter
+    return attention_aligner
