@@ -353,24 +353,24 @@ class Attention_aligner(BaseModule):
         return out.squeeze()
 
     
-    def forward(self, mu_x, src_mask):
-        decoder_inputs = torch.full((1, 1, 80), -1).type(mu_x.dtype).to(mu_x.device)
-        timestep = 0
+    # def forward(self, mu_x, src_mask):
+    #     decoder_inputs = torch.full((1, 1, 80), -1).type(mu_x.dtype).to(mu_x.device)
+    #     timestep = 0
         
-        while True:
-            timestep += 1
+    #     while True:
+    #         timestep += 1
             
-            decoder_mask = causal_mask(decoder_inputs.size(1))
-            out = self.decode(mu_x, src_mask.unsqueeze(1), decoder_inputs, decoder_mask.unsqueeze(1), None)
+    #         decoder_mask = causal_mask(decoder_inputs.size(1))
+    #         out = self.decode(mu_x, src_mask.unsqueeze(1), decoder_inputs, decoder_mask.unsqueeze(1), None)
             
-            predicted_next_frame = self.mel_projection_layer(out[:, -1])
-            decoder_inputs = torch.cat([decoder_inputs, predicted_next_frame.unsqueeze(1)], dim=1)
+    #         predicted_next_frame = self.mel_projection_layer(out[:, -1])
+    #         decoder_inputs = torch.cat([decoder_inputs, predicted_next_frame.unsqueeze(1)], dim=1)
 
-            eos_classfication = self.eos_projection_layer(out[:, -1])
-            if (self.predict_eos(eos_classfication) > 0.5 and timestep > mu_x.size(1)) or timestep > 4* mu_x.size(1):
-                break
+    #         eos_classfication = self.eos_projection_layer(out[:, -1])
+    #         if (self.predict_eos(eos_classfication) > 0.5 and timestep > mu_x.size(1)) or timestep > 4* mu_x.size(1):
+    #             break
         
-        return decoder_inputs[:, 1:, :].transpose(1, 2)
+    #     return decoder_inputs[:, 1:, :].transpose(1, 2)
     
     def compute_encoder_output_n_eos_loss(
         self,
@@ -410,7 +410,7 @@ def build_attention_aligner(
     dropout: float = 0.1,
     d_ff: int = 2048,
     encodes_position: bool = False,
-) -> Shifter:
+) -> Attention_aligner:
 
     # Create the positional encoding layers
     tgt_pos = PositionalEncoding(d_model, tgt_seq_len, dropout) if encodes_position else None

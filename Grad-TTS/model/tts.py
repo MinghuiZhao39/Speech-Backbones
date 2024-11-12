@@ -79,7 +79,26 @@ class GradTTS(BaseModule):
         mu_x, x_mask = self.encoder(x, x_lengths, spk)
 
         # multihead attention and encoder
-        mu_y = self.attention_align(mu_x.transpose(1, 2), x_mask)
+        # mu_y = self.attention_align(mu_x.transpose(1, 2), x_mask)
+
+        decoder_inputs = torch.full((1, 1, 80), -1).type(mu_x.dtype).to(mu_x.device)
+        
+        timestep = 0
+        
+        while True:
+            timestep += 1
+            
+            decoder_mask = causal_mask(decoder_inputs.size(1))
+            out = self.attention_align.decode(mu_x, x_mask.unsqueeze(1), decoder_inputs, decoder_mask.unsqueeze(1), None)
+            
+            predicted_next_frame = self.attention_align.mel_projection_layer(out[:, -1])
+            decoder_inputs = torch.cat([decoder_inputs, predicted_next_frame.unsqueeze(1)], dim=1)
+
+            eos_classfication = self.attention_align.eos_projection_layer(out[:, -1])
+            if (self.attention_align.predict_eos(eos_classfication) > 0.5 and timestep > mu_x.size(1)) or timestep > 4* mu_x.size(1):
+                break
+        
+        mu_y = decoder_inputs[:, 1:, :].transpose(1, 2)
 
         y_max_length = int(mu_y.shape[-1])
         y_max_length_ = fix_len_compatibility(y_max_length) # so that y_max_length is multiple of (4)
