@@ -88,14 +88,17 @@ class GradTTS(BaseModule):
         while True:
             timestep += 1
             
-            decoder_mask = causal_mask(decoder_inputs.size(1))
-            out = self.attention_align.decode(mu_x, x_mask.unsqueeze(1), decoder_inputs, decoder_mask.unsqueeze(1), None)
+            decoder_mask = causal_mask(decoder_inputs.size(1)).int()
+            output_mask = sequence_mask(torch.tensor([decoder_inputs.size(1)]), decoder_inputs.size(1)).to(self.device)
+            attn_mask = output_mask.unsqueeze(-1)* x_mask.unsqueeze(2) # (1, 1, 200, 1) * (1, 1, 1, 55) = (1, 1, 200, 55)
+
+            out = self.attention_align.decode(mu_x.transpose(1, 2), attn_mask, decoder_inputs, decoder_mask.unsqueeze(1), None)
             
             predicted_next_frame = self.attention_align.mel_projection_layer(out[:, -1])
             decoder_inputs = torch.cat([decoder_inputs, predicted_next_frame.unsqueeze(1)], dim=1)
 
-            eos_classfication = self.attention_align.eos_projection_layer(out[:, -1])
-            if (self.attention_align.predict_eos(eos_classfication) > 0.5 and timestep > mu_x.size(1)) or timestep > 4* mu_x.size(1):
+            eos_classfication = torch.sigmoid(self.attention_align.eos_projection_layer(out[:, -1])).squeeze()
+            if (eos_classfication > 0.5 and timestep > mu_x.size(2)) or timestep > 4 * mu_x.size(2):
                 break
         
         mu_y = decoder_inputs[:, 1:, :].transpose(1, 2)
