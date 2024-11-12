@@ -25,7 +25,7 @@ def causal_mask(size):
                       positions that are allowed to be attended to and False indicates
                       positions that are masked.
     """
-    mask = torch.triu(torch.ones((1, size, size)), diagonal=1).type(torch.int)
+    mask = torch.triu(torch.ones((1, size, size)), diagonal=1).type(torch.int).to("cuda")
     return mask == 0
 
 def create_eos_labels(tensor, lengths):

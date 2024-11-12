@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import math
 from model.utils import causal_mask
+from model.base import BaseModule
 
 
 class LayerNormalization(nn.Module):
@@ -304,7 +305,7 @@ class Shifter(nn.Module):
 
 
 
-class Attention_aligner(nn.Module):
+class Attention_aligner(BaseModule):
     def __init__(
         self,
         decoder: Decoder,
@@ -353,9 +354,12 @@ class Attention_aligner(nn.Module):
 
     
     def forward(self, mu_x, src_mask):
-        decoder_inputs = torch.full((1, 1, self.n_feats), -1).type(mu_x.dtype)
+        decoder_inputs = torch.full((1, 1, 80), -1).type(mu_x.dtype).to(mu_x.device)
+        timestep = 0
         
         while True:
+            timestep += 1
+            
             decoder_mask = causal_mask(decoder_inputs.size(1))
             out = self.decode(mu_x, src_mask.unsqueeze(1), decoder_inputs, decoder_mask.unsqueeze(1), None)
             
@@ -363,7 +367,7 @@ class Attention_aligner(nn.Module):
             decoder_inputs = torch.cat([decoder_inputs, predicted_next_frame.unsqueeze(1)], dim=1)
 
             eos_classfication = self.eos_projection_layer(out[:, -1])
-            if self.predict_eos(eos_classfication) > 0.5:
+            if (self.predict_eos(eos_classfication) > 0.5 and timestep > mu_x.size(1)) or timestep > 4* mu_x.size(1):
                 break
         
         return decoder_inputs[:, 1:, :].transpose(1, 2)

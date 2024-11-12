@@ -126,7 +126,7 @@ if __name__ == "__main__":
                                                                max_norm=1)
                 optimizer.step()
 
-                logger.add_scalar('training/duration_loss', eos_loss.item(),
+                logger.add_scalar('training/eos_loss', eos_loss.item(),
                                   global_step=iteration)
                 logger.add_scalar('training/prior_loss', prior_loss.item(),
                                   global_step=iteration)
@@ -142,13 +142,12 @@ if __name__ == "__main__":
                 diff_losses.append(diff_loss.item())
                 
                 if batch_idx % 5 == 0:
-                    msg = f'Epoch: {epoch}, iteration: {iteration} | dur_loss: {eos_loss.item()}, prior_loss: {prior_loss.item()}'
+                    msg = f'Epoch: {epoch}, iteration: {iteration} | eos_loss: {eos_loss.item()}, prior_loss: {prior_loss.item()}, diff_loss: {diff_loss.item()}'
                     progress_bar.set_description(msg)
                 
                 iteration += 1
-                break
 
-        log_msg = 'Epoch %d: duration loss = %.3f ' % (epoch, np.mean(eos_losses))
+        log_msg = 'Epoch %d: eos loss = %.3f ' % (epoch, np.mean(eos_losses))
         log_msg += '| prior loss = %.3f ' % np.mean(prior_losses)
         log_msg += '| diffusion loss = %.3f\n' % np.mean(diff_losses)
         with open(f'{log_dir}/train.log', 'a') as f:
@@ -167,25 +166,15 @@ if __name__ == "__main__":
                 # x_lengths = torch.LongTensor([x.shape[-1]]).cuda()
                 # y = item['y'].unsqueeze(0).cuda()
                 # y_lengths = torch.LongTensor([y.shape[-1]]).cuda()
-                y_enc, y_dec, attn, mu_y = model(x, x_lengths, n_timesteps=50)
-                logger.add_image(f'image_{i}/generated_enc',
-                                 plot_tensor(y_enc.squeeze().cpu()),
-                                 global_step=iteration, dataformats='HWC')
+                y_dec, mu_y = model(x, x_lengths, n_timesteps=50)
                 logger.add_image(f'image_{i}/generated_dec',
                                  plot_tensor(y_dec.squeeze().cpu()),
-                                 global_step=iteration, dataformats='HWC')
-                logger.add_image(f'image_{i}/alignment',
-                                 plot_tensor(attn.squeeze().cpu()),
                                  global_step=iteration, dataformats='HWC')
                 logger.add_image(f'image_{i}/mu_y',
                                  plot_tensor(mu_y.squeeze().cpu()),
                                  global_step=iteration, dataformats='HWC')
-                save_plot(y_enc.squeeze().cpu(), 
-                          f'{log_dir}/generated_enc_{i}.png')
                 save_plot(y_dec.squeeze().cpu(), 
                           f'{log_dir}/generated_dec_{i}.png')
-                save_plot(attn.squeeze().cpu(), 
-                          f'{log_dir}/alignment_{i}.png')
                 save_plot(mu_y.squeeze().cpu(), 
                           f'{log_dir}/mu_y{i}.png')
 
