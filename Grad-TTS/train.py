@@ -8,6 +8,8 @@
 
 import numpy as np
 from tqdm import tqdm
+import argparse
+import os
 
 import torch
 from torch.utils.data import DataLoader
@@ -57,6 +59,10 @@ pe_scale = params.pe_scale
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-p', '--training_from', type=str, required=False, help='if you want to continue training from a checkpoint')
+    args = parser.parse_args()
+    
     torch.manual_seed(random_seed)
     np.random.seed(random_seed)
 
@@ -85,11 +91,6 @@ if __name__ == "__main__":
     print('Number of decoder parameters: %.2fm' % (model.decoder.nparams/1e6))
     print('Total parameters: %.2fm' % (model.nparams/1e6))
 
-    # print("Freezing encoder and duration predictor...")
-    # model.encoder.load_state_dict(torch.load('checkpts/encoder-duration-predictor.pt', map_location=lambda loc, storage: loc))
-    # for param in model.encoder.parameters():
-    #     param.requires_grad = False
-
     print('Initializing optimizer...')
     optimizer = torch.optim.Adam(params=model.parameters(), lr=learning_rate)
 
@@ -101,11 +102,18 @@ if __name__ == "__main__":
                          global_step=0, dataformats='HWC')
         save_plot(mel.squeeze(), f'{log_dir}/original_{i}.png')
 
-    print('Start training...')
     iteration = 0
+    print('Start training...')
+    if args.training_from and os.path.exists(args.training_from):
+        print(f"Loading checkpoint from {args.training_from}")
+        checkpoint = torch.load(args.training_from)
+        model.load_state_dict(checkpoint['model_state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        start_iteration = checkpoint['iteration']
+        iterarion = start_iteration
+        
     for epoch in range(1, n_epochs + 1):
         model.train()
-        model.eval()
         eos_losses = []
         prior_losses = []
         diff_losses = []
@@ -182,5 +190,10 @@ if __name__ == "__main__":
                 save_plot(mu_y.squeeze().cpu(), 
                           f'{log_dir}/mu_y{i}.png')
 
-        ckpt = model.state_dict()
+        ckpt = {
+            'iteration': iteration,
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict()
+        }
+        
         torch.save(ckpt, f=f"{log_dir}/grad_{epoch}.pt")
