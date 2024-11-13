@@ -124,6 +124,8 @@ if __name__ == "__main__":
                                                                max_norm=1)
                 dec_grad_norm = torch.nn.utils.clip_grad_norm_(model.decoder.parameters(),
                                                                max_norm=1)
+                attention_align_grad_norm = torch.nn.utils.clip_grad_norm_(model.attention_align.parameters(),
+                                                               max_norm=1)
                 optimizer.step()
 
                 logger.add_scalar('training/eos_loss', eos_loss.item(),
@@ -135,6 +137,8 @@ if __name__ == "__main__":
                 logger.add_scalar('training/encoder_grad_norm', enc_grad_norm,
                                   global_step=iteration)
                 logger.add_scalar('training/decoder_grad_norm', dec_grad_norm,
+                                  global_step=iteration)
+                logger.add_scalar('training/attention_align_grad_norm', attention_align_grad_norm,
                                   global_step=iteration)
                 
                 eos_losses.append(eos_loss.item())
