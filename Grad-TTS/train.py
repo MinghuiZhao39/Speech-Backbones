@@ -86,8 +86,8 @@ if __name__ == "__main__":
     print('Total parameters: %.2fm' % (model.nparams/1e6))
 
     print("Freezing encoder and duration predictor...")
-    # model.encoder.load_state_dict(torch.load('checkpts/encoder-duration-predictor.pt', map_location=lambda loc, storage: loc))
-    model.load_state_dict(torch.load('/exp/exp5/acq23mz/logs/re-diff2/grad_198.pt', map_location=lambda loc, storage: loc))
+    model.encoder.load_state_dict(torch.load('checkpts/encoder-duration-predictor.pt', map_location=lambda loc, storage: loc))
+    # model.load_state_dict(torch.load('/exp/exp5/acq23mz/logs/re-diff2/grad_198.pt', map_location=lambda loc, storage: loc))
     for param in model.encoder.parameters():
         param.requires_grad = False
 
