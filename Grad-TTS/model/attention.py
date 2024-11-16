@@ -22,11 +22,11 @@ class Attention(nn.Module):
         value = self.fc1(value)
         
         # Apply attention
-        attn_output, _ = self.attention(query, key, value, key_padding_mask=mask)
+        attn_output, attention_weights = self.attention(query, key, value, key_padding_mask=mask)
         
         output = self.fc2(attn_output)
         
-        return output
+        return output, attention_weights
 
 # Example usage
 if __name__ == "__main__":

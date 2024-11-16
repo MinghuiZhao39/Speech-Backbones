@@ -100,7 +100,7 @@ class GradTTS(BaseModule):
         key_padding_mask = (y_mask.squeeze(1)==0)
         
         for i in range(mu_y.size(1)):
-            attended_mu_y[:, i+1:i+2, :] = self.attention(attended_mu_y[:, i:i+1, :], mu_y, mu_y, key_padding_mask)
+            attended_mu_y[:, i+1:i+2, :], attention_weights = self.attention(attended_mu_y[:, i:i+1, :], mu_y, mu_y, key_padding_mask)
                 
         attended_mu_y = attended_mu_y[:, 1:, :].transpose(1, 2)
 
@@ -110,7 +110,7 @@ class GradTTS(BaseModule):
         decoder_outputs = self.decoder(z, y_mask, attended_mu_y, n_timesteps, stoc, spk) #(1, 80, 200)
         decoder_outputs = decoder_outputs[:, :, :y_max_length]
 
-        return encoder_outputs, decoder_outputs, attn[:, :, :y_max_length], attended_mu_y
+        return encoder_outputs, decoder_outputs, attn[:, :, :y_max_length], attended_mu_y, attention_weights
 
     def compute_loss(self, x, x_lengths, y, y_lengths, spk=None, out_size=None):
         """

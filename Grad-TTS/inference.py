@@ -29,7 +29,7 @@ from models import Generator as HiFiGAN
 
 HIFIGAN_CONFIG = './checkpts/hifigan-config.json'
 HIFIGAN_CHECKPT = './checkpts/hifigan.pt'
-log_dir = 'logs/attention_m0'
+log_dir = 'logs/attention_m2'
 
 
 if __name__ == '__main__':
@@ -82,7 +82,7 @@ if __name__ == '__main__':
             # x_lengths = torch.LongTensor([x.shape[-1]])
             
             t = dt.datetime.now()
-            y_enc, y_dec, attn, attended_mu_y = generator.forward(x, x_lengths, n_timesteps=args.timesteps, temperature=1.5,
+            y_enc, y_dec, attn, attended_mu_y, attention_weights = generator.forward(x, x_lengths, n_timesteps=args.timesteps, temperature=1.5,
                                                    stoc=False, spk=spk, length_scale=0.91)
             t = (dt.datetime.now() - t).total_seconds()
             print(f'Grad-TTS RTF: {t * 22050 / (y_dec.shape[-1] * 256)}')
@@ -98,5 +98,7 @@ if __name__ == '__main__':
                           f'{log_dir}/alignment_{i}.png')
             save_plot(attended_mu_y.squeeze().cpu(), 
                           f'{log_dir}/attended_mu_y_{i}.png')
+            save_plot(attention_weights.squeeze().cpu(), 
+                          f'{log_dir}/attention_weights{i}.png')
 
     print('Done. Check out `out` folder for samples.')
