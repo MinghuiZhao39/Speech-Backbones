@@ -158,7 +158,7 @@ if __name__ == "__main__":
 
         log_msg = 'Epoch %d: duration loss = %.3f ' % (epoch, np.mean(dur_losses))
         log_msg += '| prior loss = %.3f ' % np.mean(prior_losses)
-        log_msg += '| diffusion loss = %.3f\n' % np.mean(diff_losses)
+        log_msg += '| diffusion loss = %.3f' % np.mean(diff_losses)
         log_msg += '| attention loss = %.3f\n' % np.mean(attention_losses)
         with open(f'{log_dir}/train.log', 'a') as f:
             f.write(log_msg)
@@ -172,7 +172,7 @@ if __name__ == "__main__":
             for i, item in enumerate(test_batch):
                 x = item['x'].to(torch.long).unsqueeze(0).cuda()
                 x_lengths = torch.LongTensor([x.shape[-1]]).cuda()
-                y_enc, y_dec, attn, attended_mu_y = model(x, x_lengths, n_timesteps=50)
+                y_enc, y_dec, attn, attended_mu_y, attention_weights = model(x, x_lengths, n_timesteps=50)
                 logger.add_image(f'image_{i}/generated_enc',
                                  plot_tensor(y_enc.squeeze().cpu()),
                                  global_step=iteration, dataformats='HWC')
@@ -185,6 +185,9 @@ if __name__ == "__main__":
                 logger.add_image(f'image_{i}/attended_mu_y',
                                  plot_tensor(attended_mu_y.squeeze().cpu()),
                                  global_step=iteration, dataformats='HWC')
+                logger.add_image(f'image_{i}/attention_weights',
+                                 plot_tensor(attention_weights.squeeze().cpu()),
+                                 global_step=iteration, dataformats='HWC')
                 save_plot(y_enc.squeeze().cpu(), 
                           f'{log_dir}/generated_enc_{i}.png')
                 save_plot(y_dec.squeeze().cpu(), 
@@ -192,7 +195,9 @@ if __name__ == "__main__":
                 save_plot(attn.squeeze().cpu(), 
                           f'{log_dir}/alignment_{i}.png')
                 save_plot(attended_mu_y.squeeze().cpu(), 
-                          f'{log_dir}/attended_mu_y_{i}.png')
+                          f'{log_dir}/attended_mu_y{i}.png')
+                save_plot(attention_weights.squeeze().cpu(), 
+                          f'{log_dir}/attention_weights{i}.png')
         
         # dur_losses_ = []
         # prior_losses_ = []
