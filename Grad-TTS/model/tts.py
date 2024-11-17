@@ -212,4 +212,8 @@ class GradTTS(BaseModule):
         prior_loss = torch.sum(0.5 * ((y - attended_mu_y.transpose(1, 2)) ** 2 + math.log(2 * math.pi)) * y_mask)
         prior_loss = prior_loss / (torch.sum(y_mask) * self.n_feats)
         
+        for i, l in enumerate([dur_loss, prior_loss, diff_loss, attention_loss]):
+            if torch.isnan(l).any() or torch.isinf(l).any():
+                raise ValueError(f"Loss is NaN or Inf {i}")
+        
         return dur_loss, prior_loss, diff_loss, attention_loss

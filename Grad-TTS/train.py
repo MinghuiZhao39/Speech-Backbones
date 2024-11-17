@@ -125,6 +125,9 @@ if __name__ == "__main__":
                                                                max_norm=1)
                 dec_grad_norm = torch.nn.utils.clip_grad_norm_(model.decoder.parameters(),
                                                                max_norm=1)
+                attention_grad_norm = torch.nn.utils.clip_grad_norm_(model.attention.parameters(),
+                                                               max_norm=1)
+                
                 optimizer.step()
 
                 logger.add_scalar('training/duration_loss', dur_loss.item(),
@@ -139,7 +142,9 @@ if __name__ == "__main__":
                                   global_step=iteration)
                 logger.add_scalar('training/decoder_grad_norm', dec_grad_norm,
                                   global_step=iteration)
-                
+                logger.add_scalar('training/attention_grad_norm', attention_grad_norm,
+                                  global_step=iteration)
+
                 dur_losses.append(dur_loss.item())
                 prior_losses.append(prior_loss.item())
                 diff_losses.append(diff_loss.item())
