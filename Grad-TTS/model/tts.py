@@ -197,6 +197,7 @@ class GradTTS(BaseModule):
         # use attention
         key_padding_mask = (y_mask.squeeze(1)==0)
         attended_mu_y, attention_weights = self.attention(left_shifted_y, mu_y, mu_y, key_padding_mask)
+        attended_mu_y = attended_mu_y.transpose(1, 2) * y_mask
 
         attention_prior = torch.zeros((mu_y.shape[0], out_size, out_size)).to(mu_y.device)
 
@@ -204,13 +205,13 @@ class GradTTS(BaseModule):
             attention_prior[i, :length, :length] = torch.eye(length)
         
         attention_weights = torch.clamp(attention_weights, 1e-8)
-        attention_loss = F.kl_div(torch.log(attention_weights), attention_prior, reduction='batchmean')
+        attention_loss = F.kl_div(torch.log(attention_weights), attention_prior)
         
         # Compute loss of score-based decoder
-        diff_loss, xt = self.decoder.compute_loss(y, y_mask, attended_mu_y.transpose(1, 2), spk) # (x0, attended_mu)
+        diff_loss, xt = self.decoder.compute_loss(y, y_mask, attended_mu_y, spk) # (x0, attended_mu)
         
         # Compute loss between aligned encoder outputs and mel-spectrogram
-        prior_loss = torch.sum(0.5 * ((y - attended_mu_y.transpose(1, 2)) ** 2 + math.log(2 * math.pi)) * y_mask)
+        prior_loss = torch.sum(0.5 * ((y - attended_mu_y) ** 2 + math.log(2 * math.pi)) * y_mask)
         prior_loss = prior_loss / (torch.sum(y_mask) * self.n_feats)
         
         for i, l in enumerate([dur_loss, prior_loss, diff_loss, attention_loss]):
