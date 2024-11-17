@@ -100,7 +100,9 @@ class GradTTS(BaseModule):
         key_padding_mask = (y_mask.squeeze(1)==0)
         
         for i in range(mu_y.size(1)):
-            attended_mu_y[:, i+1:i+2, :], attention_weights = self.attention(attended_mu_y[:, i:i+1, :], mu_y, mu_y, key_padding_mask)
+            attended_mu_y[:, i+1:i+2, :], _ = self.attention(attended_mu_y[:, i:i+1, :], mu_y, mu_y, key_padding_mask)
+        
+        _, attention_weights = self.attention(attended_mu_y[:, :i+1, :], mu_y, mu_y, key_padding_mask)
                 
         attended_mu_y = attended_mu_y[:, 1:, :].transpose(1, 2)
 
