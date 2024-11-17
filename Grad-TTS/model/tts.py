@@ -203,6 +203,7 @@ class GradTTS(BaseModule):
         for i, length in enumerate(y_lengths):
             attention_prior[i, :length, :length] = torch.eye(length)
         
+        attention_weights = torch.clamp(attention_weights, 1e-8)
         attention_loss = F.kl_div(torch.log(attention_weights), attention_prior, reduction='batchmean')
         
         # Compute loss of score-based decoder
