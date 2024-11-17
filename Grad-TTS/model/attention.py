@@ -13,7 +13,7 @@ class Attention(nn.Module):
         self.fc2 = nn.Linear(hidden_dim, input_dim)
         
         # Attention mechanism
-        self.attention = nn.MultiheadAttention(embed_dim=hidden_dim, num_heads=8, batch_first=True)
+        self.multiheadattention = nn.MultiheadAttention(embed_dim=hidden_dim, num_heads=8, batch_first=True)
         
     def forward(self, query, key, value, mask):
         # Transform the input dimensions to hidden_dim
@@ -22,7 +22,7 @@ class Attention(nn.Module):
         value = self.fc1(value)
         
         # Apply attention
-        attn_output, attention_weights = self.attention(query, key, value, key_padding_mask=mask)
+        attn_output, attention_weights = self.multiheadattention(query, key, value, key_padding_mask=mask)
         
         output = self.fc2(attn_output)
         
