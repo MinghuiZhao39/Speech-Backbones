@@ -43,8 +43,8 @@ beta_max = 20.0
 pe_scale = 1000  # 1 for `grad-tts-old.pt` checkpoint
 
 # training parameters
-log_dir = '/exp/exp5/acq23mz/logs/attention_m2'
-# log_dir = 'logs/attention_m2'
+# log_dir = '/exp/exp5/acq23mz/logs/attention-m6'
+log_dir = 'logs/attention-m6'
 test_size = 4
 n_epochs = 10000
 batch_size = 16
