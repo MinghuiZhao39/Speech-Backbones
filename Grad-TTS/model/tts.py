@@ -101,7 +101,7 @@ class GradTTS(BaseModule):
             # build mask for target and calculate output
             # decoder_mask = torch.triu(torch.ones((1, decoder_inputs.size(1), decoder_inputs.size(1))), diagonal=1).type(torch.int).to(x.device)
             decoder_mask = causal_mask(decoder_inputs.size(1)).to(x.device)
-            out = self.shifter.decode(m, y_mask.unsqueeze(1), decoder_inputs, decoder_mask.unsqueeze(1), None)
+            out = self.shifter.decode(m, y_mask.unsqueeze(1), decoder_inputs, decoder_mask.unsqueeze(1), [0], decoder_inputs.size(1))
 
             # project next token
             predicted_next_frame = self.shifter.project(out[:, -1])
@@ -199,8 +199,9 @@ class GradTTS(BaseModule):
         
         tgt_mask = torch.cat([y_mask_[i].int() & causal_mask(out_size).to(self.device) for i in range(y_mask_.shape[0])], 0)
         
-        mu_y = self.shifter.decode(m, y_mask.unsqueeze(1), decoder_input, tgt_mask.unsqueeze(1), None)
+        mu_y = self.shifter.decode(m, y_mask.unsqueeze(1), decoder_input, tgt_mask.unsqueeze(1), out_offset, out_size)
         mu_y = self.shifter.project(mu_y).transpose(1, 2) # (16, 80, 172)
+        mu_y = mu_y * y_mask
 
         # Compute loss of score-based decoder
         diff_loss, xt, noise_estimation, noise_ref = self.decoder.compute_loss(y, y_mask, mu_y, spk)

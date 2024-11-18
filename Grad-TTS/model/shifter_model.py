@@ -80,10 +80,13 @@ class PositionalEncoding(nn.Module):
         # Register the positional encoding as a buffer
         self.register_buffer("pe", pe)
 
-    def forward(self, x, begin_time, end_time):
-        x = x + (self.pe[:, begin_time: end_time, :]).requires_grad_(
-            False
-        )  # (batch, seq_len, d_model)
+    def forward(self, x, begin_times, length):
+        # x = x + (self.pe[:, begin_time: end_time, :]).requires_grad_(
+        #     False
+        # )  # (batch, seq_len, d_model)
+        embeddings = torch.cat([self.pe[:, bt: bt+length, :] for bt in begin_times], dim=0)
+        
+        x = x + embeddings.requires_grad_(False)  # (batch, seq_len, d_model)
         return self.dropout(x)
 
 
@@ -277,7 +280,8 @@ class Shifter(nn.Module):
         src_mask: torch.Tensor,
         tgt: torch.Tensor,
         tgt_mask: torch.Tensor,
-        segment_index: torch.Tensor,
+        segment_index,
+        out_size,
     ):
         '''
         encoder_out: (bs, seq_len, n_feats)
@@ -285,12 +289,13 @@ class Shifter(nn.Module):
         tgt: (bs, seq_len, d_model)
         tgt_mask: (bs, 1, seq_len, seq_len)
         ''' 
-        if self.tgt_pos:
-            tgt = self.tgt_pos(tgt, segment_index[0], segment_index[1])
         
         # project the latent space of text representation to the model space 80 -> 512
         tgt = self.decoder_input_projection_layer(tgt)
         encoder_output = self.encoder_output_projection_layer(encoder_output)
+
+        if self.tgt_pos:
+            tgt = self.tgt_pos(tgt, segment_index, out_size)
             
         return self.decoder(tgt, encoder_output, src_mask, tgt_mask)
 
@@ -304,14 +309,14 @@ class Shifter(nn.Module):
 
 def build_shifter(
     output_dim: int,
-    tgt_seq_len: int = 1000,
+    tgt_seq_len: int = 1200,
     d_model: int = 512,
     N: int = 2,
     h: int = 4,
     dropout: float = 0.1,
     d_ff: int = 2048,
     predict_eos: bool = False,
-    encodes_position: bool = False,
+    encodes_position: bool = True,
 ) -> Shifter:
     # Create the embedding layers
 

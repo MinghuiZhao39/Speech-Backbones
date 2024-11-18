@@ -145,7 +145,7 @@ if __name__ == "__main__":
                 diff_losses.append(diff_loss.item())
                 
                 if batch_idx % 5 == 0:
-                    msg = f'Epoch: {epoch}, iteration: {iteration} | dur_loss: {dur_loss.item()}, prior_loss: {prior_loss.item()}'
+                    msg = f'Epoch: {epoch}, iteration: {iteration} | dur_loss: {dur_loss.item()}, prior_loss: {prior_loss.item()}, diff_loss: {diff_loss.item()}'
                     progress_bar.set_description(msg)
                 
                 iteration += 1
