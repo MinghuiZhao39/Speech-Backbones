@@ -43,11 +43,11 @@ beta_max = 20.0
 pe_scale = 1000  # 1 for `grad-tts-old.pt` checkpoint
 
 # training parameters
-log_dir = 'logs/revised-efficient-attention'
+log_dir = 'logs/training-no-segments-bs-12'
 test_size = 4
 n_epochs = 10000
-batch_size = 16
+batch_size = 12
 learning_rate = 1e-4
 seed = 37
-save_every = 20 
+save_every = 20
 out_size = fix_len_compatibility(2*22050//256)
